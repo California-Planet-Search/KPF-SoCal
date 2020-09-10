@@ -25,7 +25,8 @@ sphere = 0 # which ThorLabs sphere to use
 diameter_sphere = [(2*u.imperial.inch).to(u.cm),   (4*u.imperial.inch).to(u.cm)][sphere]
 diameter_input  = [(0.5*u.imperial.inch).to(u.cm), (1*u.imperial.inch).to(u.cm)][sphere]
 diameter_port   = [(0.5*u.imperial.inch).to(u.cm), (5*u.mm).to(u.cm)           ][sphere]
-diameter_fiber  = (225*u.micron).to(u.cm) # (1*u.mm).to(u.cm)
+diameter_fiber  = (200*u.micron).to(u.cm) # (1*u.mm).to(u.cm)
+numerical_aperture = 0.22 # Thorlabs fiber numerical aperture
 nports = 1
 
 # Integrating sphere properties
@@ -55,7 +56,7 @@ def sphere_throughput_to_port(phi_in):
     Omega = np.pi*u.sr # (simply pi steradians for projected solid angle of hemisphere)
     return radiance_on_sphere_wall(phi_in) * area_port * Omega
 
-def sphere_throughput_to_fiber(phi_in, R=0, NA=0.14):
+def sphere_throughput_to_fiber(phi_in, R=0, NA=numerical_aperture):
     # R = reflectivity of the fiber face
     # NA = numerical aperture of fiber
     Omega = np.pi*u.sr  * NA**2
@@ -68,7 +69,8 @@ print('Throughput at the fiber:', sphere_throughput_to_fiber(1))
 overfill_area = 10
 
 # Compute what magnitude star the sun would look like to KPF
-dm = 2.5*np.log10(sphere_throughput_to_fiber(1) * (D_socal/D_keck)**2 / overfill_area)
+throughput = 2.5*10**(-5) # sphere_throughput_to_fiber(1)
+dm = 2.5*np.log10(throughput * (D_socal/D_keck)**2 / overfill_area)
 mag_sun = -26.832
 mag = mag_sun - dm
 
@@ -92,14 +94,16 @@ print('     Total velocity uncertainty: {:.2f} cm/s'.format(dv*100))
 wave, snr, sigma_rv = orderinfo
 print('     Median SNR/order: {:.2f}'.format(np.median(snr)))
 
-fig, ax = plt.subplots(1,1,figsize=(10,5))
+if len(sys.argv) > 2:
+    if sys.argv[2] == 'plot':
+        fig, ax = plt.subplots(1,1,figsize=(10,5))
 
-ax.plot(wave, snr)
-ax.set(xlabel='Wavelength [nm]')
-ax.set_ylabel('Mean SNR [in order]', color='C0')
+        ax.plot(wave, snr)
+        ax.set(xlabel='Wavelength [nm]')
+        ax.set_ylabel('Mean SNR [in order]', color='C0')
 
-ax2 = ax.twinx()
-ax2.plot(wave, sigma_rv, color='C1')
-ax2.set_ylabel(r'$\sigma_{RV}$ [m/s]', color='C1')
+        ax2 = ax.twinx()
+        ax2.plot(wave, sigma_rv, color='C1')
+        ax2.set_ylabel(r'$\sigma_{RV}$ [m/s]', color='C1')
 
-plt.show()
+        plt.show()
