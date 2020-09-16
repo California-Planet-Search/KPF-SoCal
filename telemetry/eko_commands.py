@@ -9,6 +9,8 @@
 #
 ############################################################
 
+from commands import send_command
+
 mode_description = {0: 'Manual tracking mode', 
                     1: 'Calculation tracking mode', 
                     2: 'Sun-sensor tracking mode', 
