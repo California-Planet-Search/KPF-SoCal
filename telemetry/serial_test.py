@@ -1,11 +1,11 @@
 import serial
-​
+
 # COM3 : left USB2.0 on left side
 # \r   : carriage return escape character
-# b''  : converts stying to byte literal
-​
+# b''  : converts string to byte literal
+
 ser = serial.Serial('COM3')
-​
+
 if not ser.is_open:
 	ser.open()
 	print(ser.name, 'opened.')
