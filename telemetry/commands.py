@@ -40,7 +40,7 @@ def send_command(command, ser):
         return output
 
 
-def slew(ser, alt, az):
+def slew(ser, alt, az, keep_manual=True):
     '''
     Switches to manual pointing and slews the tracker to the desired position 
     
@@ -48,7 +48,8 @@ def slew(ser, alt, az):
         ser: pyserial object of the serial port to send the command to
         alt: (float) altitude in decimal degrees to slew to (e.g. 15.123)
         az:  (float) azimuth in decimal degrees to slew to (e.g. 123.133)
-
+        keep_manual (bool): After slewing, remain in manual pointing mode 
+                            or revert to autonomous tracking?
     Returns:
         alt: (float) tracker altitude in decimal degrees (e.g. 15.123)
         az:  (float) tracker azimuth in decimal degrees (e.g. 123.133)
@@ -87,3 +88,25 @@ def slew(ser, alt, az):
         else:
             print(output)
 
+
+def initialize(ser):
+    '''
+    Initialize the SoCal after powering on
+
+    Args:
+        ser: pyserial object of the serial port to send the command to
+
+    Returns:
+        output: status of tracker after startup 
+    '''
+
+    # TODO
+    # Set/confirm auto tracking mode
+    
+    # Confirm date/time lat/lon
+	
+    # Confirm pointing at sun
+
+    # Confirm active tracking
+
+    return
