@@ -13,6 +13,7 @@ if not ser.is_open:
 if ser.is_open:
 	command = b'TM\r' # requests current UT date/time
 	bytes_written = ser.write(command)
+        time.sleep(1) # need to wait to recieve answer
 	bytes_recieved = ser.in_waiting
 	print(ser.read(bytes_recieved))
 	

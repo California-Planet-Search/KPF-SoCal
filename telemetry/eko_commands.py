@@ -5,17 +5,46 @@
 #  Python wrappers for EKO Solar Tracker commands
 #
 #  Author: Ryan Rubenzahl
-#  Last edit: 9/16/2020
+#  Last edit: 2/01/2021
 #
 ############################################################
+import time
 
-from commands import send_command
-
-mode_description = {0: 'Manual tracking mode', 
-                    1: 'Calculation tracking mode', 
-                    2: 'Sun-sensor tracking mode', 
-                    3: 'Sun-sensor with learning tracking mode'
+mode_description = {'0': 'Manual tracking mode', 
+                    '1': 'Calculation tracking mode', 
+                    '2': 'Sun-sensor tracking mode', 
+                    '3': 'Sun-sensor with learning tracking mode'
                    }
+
+def send_command(command, ser):
+    '''
+    Sends command to the serial port provided
+    
+    Args:
+        command: string of EKO command. Must be cast to byte literal
+                    e.g. b'TM\r' or with encode (default is utf-8)
+        ser: pyserial object of the serial port to send the command to
+
+    Returns:
+        output: string output from the tracker
+    '''
+
+    print('Sending command: {}'.format(command))
+
+    bytes_written = ser.write(command)
+    print('Wrote {} bytes'.format(bytes_written))
+    while ser.in_waiting == 0:
+        time.sleep(1) # need to wait to recieve answer
+    bytes_recieved = ser.in_waiting
+    print('Recieved {} bytes'.format(bytes_recieved))
+
+    output = ser.read(bytes_recieved).decode().strip('\r')
+    if output == 'ERR':
+        print('ERROR: command [{}] not recognized!'.format(command)) 
+        return None
+    else:
+        return output
+
 
 ############################ SET commands ############################
 def set_datetime(date, time):
@@ -54,23 +83,23 @@ def set_location(lat, lon):
 
 def set_tracking_mode(mode):
     '''
-    Set tracking mode. Use 3 for normal operation.
+    Set tracking mode. Use '3' for normal operation.
     Tracking angle includes the pointing error obtained from the sun-sensor.
 
     Args:
         mode: (int) tracking mode code
-            0: Manual tracking mode
-            1: Calculation tracking mode
-            2: Sun-sensor tracking mode
-            3: Sun-sensor with learning tracking mode
+            '0': Manual tracking mode
+            '1': Calculation tracking mode
+            '2': Sun-sensor tracking mode
+            '3': Sun-sensor with learning tracking mode
 
     Returns:
         command: string formatted for EKO tracker to be used in send_command()
     '''
     mode_string = ''.join(['\n\t{}: {}'.format(m, mode_description[m]) for m in mode_description])
-    assert mode in [0, 1, 2, 3], 'Invalid mode. Valid modes are: {}'.format(mode_string)
+    assert mode in ['0', '1', '2', '3'], 'Invalid mode. Valid modes are: {}'.format(mode_string)
     command = 'MD,{}\r'.format(mode).encode()
-    print('Setting active tracking mode to {}: {}'.format(mode, mode_description[mode]))
+    print('Setting active tracking mode to {} - {}'.format(mode, mode_description[mode]))
     return command
 
 
@@ -87,7 +116,7 @@ def set_position(alt, az):
     '''
     assert alt >= 0 and alt < 90, 'Alt {:.3f} outside limits [0, 90]'.format(alt)
     assert az >= -180 and az <= 180, 'Az {:.3f} outside limits [-180, 180]'.format(az)
-    command = 'MP,{:.3f},{:.3f}r'.format(az, alt).encode()
+    command = 'MP,{:.3f},{:.3f}\r'.format(az, alt).encode()
     return command
 
 
@@ -109,7 +138,7 @@ def get_datetime(ser):
     if output is None:
         return None
     else:
-        YYYY, MM, DD, hh, mm, ss = command.split(',')   
+        YYYY, MM, DD, hh, mm, ss, ok = str(output).split(',')   
         datetime = '{}-{}-{}T{}:{}:{}'.format(YYYY, MM, DD, hh, mm, ss) 
         return datetime
 
@@ -152,15 +181,15 @@ def get_tracking_mode(ser):
             2: Sun-sensor tracking mode
             3: Sun-sensor with learning tracking mode
     '''
-    command = b'LO\r'
+    command = b'MD\r'
     print('Fetching active tracking mode...')
     output = send_command(command, ser)
     
     if output is None:
         return None
     else:
-        mode = output.split(',')[1] 
-        print('Active tracking mode: {} - {}'.format(mode, mode_description[mode]))
+        mode, ok = output.split(',') 
+        print('Current tracking mode: {} - {}'.format(mode, mode_description[mode]))
         return mode 
 
 
@@ -181,7 +210,7 @@ def get_corrected_position(ser):
     print('Fetching current tracker position...')
     output = send_command(command, ser)
     
-    if output is None:
+    if len(output) == 0: # TODO: What is the right way to check if output? regex?
         return None
     else:
         az, alt, ok = output.split(',')
