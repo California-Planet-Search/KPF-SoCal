@@ -24,19 +24,19 @@ class SoCal(object):
         
     def set_datetime(self, date, time):
         command = eko.set_datetime(date, time)
-        eko.send_command(command, self.ser)
+        return eko.send_command(command, self.ser)
 
     def set_location(self, lat, lon):
         command = eko.set_location(lat, lon)
-        eko.send_command(command, self.ser)
+        return eko.send_command(command, self.ser)
 
     def set_tracking_mode(self, mode):
         command = eko.set_tracking_mode(mode)
-        eko.send_command(command, self.ser)
+        return eko.send_command(command, self.ser)
 
     def set_position(self, alt, az):
         command = eko.set_position(alt, az)
-        eko.send_command(command, self.ser)
+        return eko.send_command(command, self.ser)
     
     def get_datetime(self):
         return eko.get_datetime(self.ser)
@@ -59,54 +59,51 @@ class SoCal(object):
     def get_firmware_version(self):
         return eko.get_firmware_version(self.ser)
 
-    def slew(ser, alt, az, keep_manual=True):
+    def slew(self, alt, az, new_mode='0'):
         '''
         Switches to manual pointing and slews the tracker to the desired position 
         
         Args:
-            ser: pyserial object of the serial port to send the command to
             alt: (float) altitude in decimal degrees to slew to (e.g. 15.123)
             az:  (float) azimuth in decimal degrees to slew to (e.g. 123.133)
-            keep_manual (bool): After slewing, remain in manual pointing mode 
-                                or revert to autonomous tracking?
+            new_mode: After slewing, remain in manual pointing mode [default]
+                                or switch to tracking mode '1', '2', or '3'
         Returns:
             alt: (float) tracker altitude in decimal degrees (e.g. 15.123)
             az:  (float) tracker azimuth in decimal degrees (e.g. 123.133)
         '''
-        print('Slewing to\n\tAlt = {:.3f}\n\tAz = {:.3f}'.format(alt, az))
+        print('Slewing to\n\tAlt = {:.3f}\n\tAz = {:.3f}...'.format(alt, az))
 
         # 1. Set the tracker to Manual command mode
-        cmd = set_tracking_mode('0')
-        output = send_command(cmd, ser)
-        if output is None:
-            # TODO: Shouldn't this be a check on if output='ERR'
+        output = self.set_tracking_mode('0')
+        if output is None or len(output) == 0 or output == 'ERR':
+            print('BAD OUTPUT:', output)
             return
         else:
             print(output)
 
         # 2. Slew to desired alt/az
-        cmd = set_position(alt, az)
-        output = send_command(cmd, ser)
+        output = self.set_position(alt, az)
         if output is None:
+            print('SLEW ERROR:', output)
             return
         else:
             print(output)
 
-        # TODO: How to check if slewing/when done slewing?
-
         # 3. Read the current pointing position
-        #output = get_corrected_position(ser)
-        #if output is None:
-        #    return
-        #else:
-        #   alt, az = output
-        #   print('Now pointing at\n\tAlt = {:.3f}\n\tAz = {:.3f}'.format(alt, az))
-
-        if keep_manual:
+        output = self.get_corrected_position()
+        if output is None:
+            print('ERROR:', output)
             return
         else:
-            cmd = set_tracking_mode('3')
-            output = send_command(cmd, ser)
+           alt, az = output
+           print('Now pointing at\n\tAlt = {:.3f}\n\tAz = {:.3f}'.format(alt, az))
+
+        if new_mode == '0'::
+            return
+        else:
+            assert new_mode in ['1', '2', '3'], 'Invalid tracking mode {}, must be 1, 2, or 3'.format(new_mode)
+            output = self.set_tracking_mode(new_mode)
             if output is None:
                 return
             else:
