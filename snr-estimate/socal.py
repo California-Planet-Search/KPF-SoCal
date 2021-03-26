@@ -62,33 +62,37 @@ def sphere_throughput_to_fiber(phi_in, R=0, NA=numerical_aperture):
     Omega = np.pi*u.sr  * NA**2
     return radiance_on_sphere_wall(phi_in) * area_fiber * (1-R) * Omega
 
-print('Throughput at the exit port:', sphere_throughput_to_port(1))
-print('Throughput at the fiber:', sphere_throughput_to_fiber(1))
+print('Throughput at the exit port: {:.3e}'.format(sphere_throughput_to_port(1)))
+print('Throughput at the fiber: {:.3e}'.format(sphere_throughput_to_fiber(1)))
 
 # Overfill-factor (area ratio) of fiber cross-section to final input cross-section
 overfill_area = 10
 
 # Compute what magnitude star the sun would look like to KPF
-throughput = 2.5*10**(-5) # sphere_throughput_to_fiber(1)
+throughput = sphere_throughput_to_fiber(1)
+#throughput = 2.5*10**(-5) 
+
+# Add effects of fiber from roof->cal bench->FIU
+length = 40 + 60 # meters
+throughput *= (0.9+0.4)/2 # PDR page 63
+#throughput *= 0.45 # H&K 380-410nm
+
 dm = 2.5*np.log10(throughput * (D_socal/D_keck)**2 / overfill_area)
 mag_sun = -26.832
 mag = mag_sun - dm
 
-print('In the configuration above, the Sun will appear to KPF like a {:.2f} magnitude star observed with Keck'.format(mag))
-
 if len(sys.argv) > 1:
-    texp = int(sys.argv[1]) # seconds
+    texp = float(sys.argv[1]) # seconds
 else:
     texp = 20
 
-print('For a {} sec exposure...'.format(texp))
 # Scale to KPF etc working range
-mag += 5
-texp*=100
-dv, orderinfo = KPF_photon_noise_estimate(5800.,mag,texp,
-                                        fits_dir=kpf_etc_dir + '/grids/',save_file=False
-                                         )
+dv, orderinfo = KPF_photon_noise_estimate(5800.,mag+5,texp*100, fits_dir=kpf_etc_dir + '/grids/',save_file=False, quiet=True)
 
+print('Throughput at the FIU: {:.3e}'.format(throughput))
+print('In the configuration above, the Sun will appear to KPF like a {:.2f} magnitude star observed with Keck'.format(mag))
+
+print('For a {} sec exposure...'.format(texp))
 print('     Total velocity uncertainty: {:.2f} cm/s'.format(dv*100))
 
 wave, snr, sigma_rv = orderinfo
