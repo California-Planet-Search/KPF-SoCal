@@ -5,10 +5,12 @@
 #  Python wrappers for EKO Solar Tracker commands
 #
 #  Author: Ryan Rubenzahl
-#  Last edit: 2/01/2021
+#  Last edit: 2/02/2022
 #
 ############################################################
 import time
+
+BUFFER_SIZE = 80 # Max number of bytes to read out
 
 mode_description = {'0': 'Manual tracking mode', 
                     '1': 'Calculation tracking mode', 
@@ -16,34 +18,37 @@ mode_description = {'0': 'Manual tracking mode',
                     '3': 'Sun-sensor with learning tracking mode'
                    }
 
-def send_command(command, ser):
+def send_command(command, tracker):
     '''
-    Sends command to the serial port provided
+    Sends command to the EKO tracker over TCP/IP 
     
     Args:
         command: string of EKO command. Must be cast to byte literal
-                    e.g. b'TM\r' or with encode (default is utf-8)
-        ser: pyserial object of the serial port to send the command to
+                    e.g. b'TM\r' or with str.encode() (default is utf-8)
+        tracker: socket object corresponding to the IP/port of the trackr
+                    - SoCal Lantronix is 192.168.23.232
+                    - Serial port 1 on Lantronix is Port 10001 (tracker, RS232)
 
     Returns:
-        output: string output from the tracker
+        response: string output from the tracker (decoded)
     '''
 
     print('Sending command: {}'.format(command))
 
-    bytes_written = ser.write(command)
-    print('Wrote {} bytes'.format(bytes_written))
-    while ser.in_waiting == 0:
-        time.sleep(1) # need to wait to recieve answer
-    bytes_recieved = ser.in_waiting
-    print('Recieved {} bytes'.format(bytes_recieved))
+    bytes_sent = tracker.send(command)
+    print('Sent {} bytes'.format(bytes_sent))
+    #while ser.in_waiting == 0:
+    #   time.sleep(1) # check for response every second
+    #bytes_recieved = ser.in_waiting
+    #print('Recieved {} bytes'.format(bytes_recieved))
 
-    output = ser.read(bytes_recieved).decode().strip('\r')
-    if output == 'ERR':
+    time.sleep(1) # wait 1 second for response #TODO: improve this
+    response = tracker.recv(BUFFER_SIZE).decode().strip('\r')
+    if response == 'ERR':
         print('ERROR: command [{}] not recognized!'.format(command)) 
         return None
     else:
-        return output
+        return response 
 
 
 ############################ SET commands ############################
@@ -87,7 +92,7 @@ def set_tracking_mode(mode):
     Tracking angle includes the pointing error obtained from the sun-sensor.
 
     Args:
-        mode: (int) tracking mode code
+        mode: (str) tracking mode code
             '0': Manual tracking mode
             '1': Calculation tracking mode
             '2': Sun-sensor tracking mode
@@ -121,19 +126,19 @@ def set_position(alt, az):
 
 
 ############################ GET commands ############################
-def get_datetime(ser):
+def get_datetime(tracker):
     '''
     Get date and time (UTC) 
 
     Args:
-        ser: (pyserial object) serial port to read from
+        tracker: (socket object) socket TCP/IP port to read from
 
     Returns:
         datetime: datetime string formatted as YYYY-MM-DDThh:mm:ss 
     '''
     command = b'TM\r'
     print('Fetching date/time from tracker...')
-    output = send_command(command, ser)
+    output = send_command(command, tracker)
 
     if output is None:
         return None
@@ -143,12 +148,12 @@ def get_datetime(ser):
         return datetime
 
 
-def get_location(ser):
+def get_location(tracker):
     '''
     Get location/site latitude and longitude
 
     Args:
-        ser: (pyserial object) serial port to read from
+        tracker: (socket object) socket TCP/IP port to read from
 
     Returns:
         lat: (float) latitude in decimal degrees, + North, - South (e.g. 35.67199)
@@ -156,7 +161,7 @@ def get_location(ser):
     '''
     command = b'LO\r'
     print('Fetching latitude/longitude from tracker...')
-    output = send_command(command, ser)
+    output = send_command(command, tracker)
 
     if output is None:
         return None
@@ -167,12 +172,12 @@ def get_location(ser):
         return lat, lon 
 
 
-def get_tracking_mode(ser):
+def get_tracking_mode(tracker):
     '''
     Get active tracking mode. 
 
     Args:
-        ser: (pyserial object) serial port to read from
+        tracker: (socket object) socket TCP/IP port to read from
     
     Returns:
         mode: (int) tracking mode code
@@ -183,7 +188,7 @@ def get_tracking_mode(ser):
     '''
     command = b'MD\r'
     print('Fetching active tracking mode...')
-    output = send_command(command, ser)
+    output = send_command(command, tracker)
     
     if output is None:
         return None
@@ -193,14 +198,14 @@ def get_tracking_mode(ser):
         return mode 
 
 
-def get_corrected_position(ser):
+def get_corrected_position(tracker):
     '''
     Get the current tracker position. 
     Corrected angle value means a calculated solar position with a 
     sun-sensor correction offset value. (Actual pointing angle)
 
     Args:
-        ser: (pyserial object) serial port to read from
+        tracker: (socket object) socket TCP/IP port to read from
     
     Returns:
         alt: (float) altitude in decimal degrees, + Upper, - Lower (e.g. 15.123)
@@ -208,7 +213,7 @@ def get_corrected_position(ser):
     '''
     command = b'MR\r'
     print('Fetching current tracker position...')
-    output = send_command(command, ser)
+    output = send_command(command, tracker)
     
     if len(output) == 0: # TODO: What is the right way to check if output? regex?
         return None
@@ -219,14 +224,14 @@ def get_corrected_position(ser):
         return alt, az 
 
 
-def get_calculated_position(ser):
+def get_calculated_position(tracker):
     '''
     Get the calculated tracker position. 
     Calculated angle value means a calculated solar position 
     without a sun-sensor correction offset value
 
     Args:
-        ser: (pyserial object) serial port to read from
+        tracker: (socket object) socket TCP/IP port to read from
     
     Returns:
         alt: (float) altitude in decimal degrees, + Upper, - Lower (e.g. 15.123)
@@ -234,7 +239,7 @@ def get_calculated_position(ser):
     '''
     command = b'CR\r'
     print('Fetching calculated tracker position...')
-    output = send_command(command, ser)
+    output = send_command(command, tracker)
     
     if output is None:
         return None
@@ -245,12 +250,12 @@ def get_calculated_position(ser):
         return alt, az 
 
 
-def get_sun_sensor_offset(ser):
+def get_sun_sensor_offset(tracker):
     '''
     Get the offset angle of the sun sensor (test only) 
 
     Args:
-        ser: (pyserial object) serial port to read from
+        tracker: (socket object) socket TCP/IP port to read from
     
     Returns:
         ha: (float) horizontal angle in decimal degrees
@@ -258,7 +263,7 @@ def get_sun_sensor_offset(ser):
     '''
     command = b'RO\r'
     print('Fetching sun sensor offset angle...')
-    output = send_command(command, ser)
+    output = send_command(command, tracker)
     
     if output is None:
         return None
@@ -269,19 +274,19 @@ def get_sun_sensor_offset(ser):
         return ha, va 
 
 
-def get_firmware_version(ser):
+def get_firmware_version(tracker):
     '''
     Get the tracker firmware version 
 
     Args:
-        ser: (pyserial object) serial port to read from
+        tracker: (socket object) socket TCP/IP port to read from
     
     Returns:
         v: (str) firmware version (latest version as of May 15, 2003 is 3.00) 
     '''
     command = b'VER\r'
     print('Fetching tracker firmware version...')
-    output = send_command(command, ser)
+    output = send_command(command, tracker)
     
     if output is None:
         return None
