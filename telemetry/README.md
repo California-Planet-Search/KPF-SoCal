@@ -2,11 +2,15 @@
 
 Code for sending/recieving commands to the solar tracker.
 
-Communication is over RS-232 to USB2.0
+Communication is over RS-232, through Lantronix into ethernet
 
-Serial commands wrapped in Python using [`pySerial`][https://pyserial.readthedocs.io/en/latest/pyserial.html]
+Lantronix: 192.168.23.232
+Local port: 10001 (EKO Tracker)
+Local port: 10002 (Pyrheliometer)
 
-Communication with Keck via the Keck Task Library (KTL) using [`ktl`][http://spg.ucolick.org/KTLPython/] (Requires Python 2.0)
+Serial commands wrapped in Python using [`socket`][https://docs.python.org/3/library/socket.html]
+
+Communication with Keck via the Keck Task Library (KTL) using [`ktl`][http://spg.ucolick.org/KTLPython/] 
 
 ## EKO Solar Tracker Interface specifications
 
