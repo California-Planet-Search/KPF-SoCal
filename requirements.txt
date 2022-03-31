@@ -1,4 +1,4 @@
-pyserial
 numpy
 astropy
 matplotlib
+pymodbus
