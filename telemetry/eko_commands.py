@@ -5,20 +5,21 @@
 #  Python wrappers for EKO Solar Tracker commands
 #
 #  Author: Ryan Rubenzahl
-#  Last edit: 2/02/2022
+#  Last edit: 3/31/2022
 #
 ############################################################
 import time
 
-BUFFER_SIZE = 80 # Max number of bytes to read out
-
+# Global static variables
+BUFFER_SIZE = 256 # Max number of bytes to read out
 mode_description = {'0': 'Manual tracking mode', 
                     '1': 'Calculation tracking mode', 
                     '2': 'Sun-sensor tracking mode', 
                     '3': 'Sun-sensor with learning tracking mode'
                    }
+error_msg = b'ERR\r'
 
-def send_command(command, tracker):
+def send_command(command, tracker, wait_for_response=False):
     '''
     Sends command to the EKO tracker over TCP/IP 
     
@@ -28,27 +29,32 @@ def send_command(command, tracker):
         tracker: socket object corresponding to the IP/port of the trackr
                     - SoCal Lantronix is 192.168.23.232
                     - Serial port 1 on Lantronix is Port 10001 (tracker, RS232)
+        wait_for_response: (bool) wait for complete response from tracker before
+                                    proceeding. Good for set commands (e.g. slew).
 
     Returns:
         response: string output from the tracker (decoded)
     '''
 
     print('Sending command: {}'.format(command))
-
     bytes_sent = tracker.send(command)
     print('Sent {} bytes'.format(bytes_sent))
-    #while ser.in_waiting == 0:
-    #   time.sleep(1) # check for response every second
-    #bytes_recieved = ser.in_waiting
-    #print('Recieved {} bytes'.format(bytes_recieved))
-
-    time.sleep(1) # wait 1 second for response #TODO: improve this
-    response = tracker.recv(BUFFER_SIZE).decode().strip('\r')
-    if response == 'ERR':
+    time.sleep(0.1)
+    if wait_for_response: 
+        complete_msg = [b'OK\r', error_msg]
+        response = b''
+        while not response in complete_msg: 
+            response += tracker.recv(BUFFER_SIZE)
+            time.sleep(1) # wait for complete response
+    else:
+        response = tracker.recv(BUFFER_SIZE)
+    
+    if response == error_msg:
         print('ERROR: command [{}] not recognized!'.format(command)) 
         return None
     else:
-        return response 
+        return response.decode().strip('\r')
+
 
 
 ############################ SET commands ############################
@@ -180,7 +186,7 @@ def get_tracking_mode(tracker):
         tracker: (socket object) socket TCP/IP port to read from
     
     Returns:
-        mode: (int) tracking mode code
+        mode: (str) tracking mode code
             0: Manual tracking mode
             1: Calculation tracking mode
             2: Sun-sensor tracking mode
@@ -195,7 +201,7 @@ def get_tracking_mode(tracker):
     else:
         mode, ok = output.split(',') 
         print('Current tracking mode: {} - {}'.format(mode, mode_description[mode]))
-        return mode 
+        return str(mode) 
 
 
 def get_corrected_position(tracker):
