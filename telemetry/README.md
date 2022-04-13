@@ -1,4 +1,4 @@
-# KPF-SoCal telemtry
+# KPF-SoCal communication & control
 
 Code for sending/recieving commands to the solar tracker.
 
