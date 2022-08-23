@@ -1,4 +1,4 @@
-# KPF-SoCal telemtry
+# KPF-SoCal communication & control
 
 Code for sending/recieving commands to the solar tracker.
 
@@ -9,8 +9,8 @@ Serial commands wrapped in Python using `socket`.
 Communication with Keck via the Keck Task Library (KTL) using [`KTLPython`][http://spg.ucolick.org/KTLPython/]
 
 =======
-Lantronix: 192.168.23.232
-Local port: 10001 (EKO Tracker)
+Lantronix IP: 192.168.23.242
+Local port: 10001
 
 ## EKO Solar Tracker Interface specifications
 
