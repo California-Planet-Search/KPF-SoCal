@@ -1,0 +1,70 @@
+import websocket
+
+DOME_IP = "192.168.23.244"
+
+class Dome(object):
+
+    possible_responses = ["0 OK",
+                          "1 Rejected. Unknown command",
+                          "2 Rejected. Operation mode switch is in local mode",
+                          "3 Rejected. Switches on both ends are ON",
+                          "4 Rejected. System is running on battery",
+                          "5 Rejected. No Current sensor is present",
+                          "6 Rejected. Invalid output name",
+                          "7 Rejected. Operation blocked by sensor"
+                         ]
+
+    def __init__(self):
+        self.connect_ws()
+
+    def connect_ws(self):
+        """ Open the WebSocket connection """
+        self.ws = websocket.WebSocket()
+        wsPath = "ws://{}:4030/ws".format(DOME_IP)
+        self.ws.connect(wsPath)
+        print('Opened WebSocket at {}'.format(wsPath))
+
+    def close_ws(self):
+        """ Close the WebSocket connection """
+        self.ws.close()
+        if not self.ws.connected:
+           print('WebSocket connection closed.')
+        else:
+            print('WebSocket connection failed to close.')
+    
+    def __execCommands(self, cmd):
+        """ Send command to the DomeGuard and recieve response """
+        self.ws.send(cmd)
+        result = self.ws.recv()
+        return result
+    
+    def open(self):
+        """ Open the dome """
+        return self.__execCommands("open")
+
+    def close(self):
+        """ Close the dome """
+        return self.__execCommands("close")
+    
+    def stop(self):
+        """ Halt the dome motor """
+        return self.__execCommands("stop")
+    
+    def status(self, human_readable=False):
+        """ Check the status of the dome """
+        if human_readable:
+            return self.__execCommands("status")
+        else:
+            result = self.__execCommands("s")
+            print(result)
+
+    def set_ch1(self, state):
+        """
+        Set the state of the output relay
+
+        Parameters: 
+            state ["on", "off"]
+        """
+        assert state in ['on', 'off']
+        cmd = 'set ch1 {}'.format(state)
+        return self.__execCommands(cmd)
