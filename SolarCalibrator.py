@@ -83,12 +83,22 @@ class SoCal(object):
 
     def on_open(self):
         # TODO: Tell dome to open
-        self.check_opened()
+        print('Opening SoCal dome...')
+        self.dome_status()
 
-    def check_opened(self):
+    def on_close(self):
+        # TODO: Tell dome to close
+        print('Closing SoCal dome...')
+        self.dome_status()
+
+    def dome_status(self):
         opened = True # TODO: Return dome.status and verify opened
+        closed = False # TODO: Return dome.status and verify closed
+        undef  = not opened and not closed # Dome partway open?
         if opened:
             self.opened()
+        elif closed:
+            self.closed()
         else:
             print('ERROR! The dome did not open.')
             self.errored()
@@ -97,3 +107,17 @@ class SoCal(object):
         # If the dome successfully opened, tell the tracker to start guiding
         # Wait until tracker is done moving (check alt/az or simply wait for serial recv?)
         print('Opened, setting tracker to active guiding mode...')
+
+    def on_closed(self):
+        # If the dome successfully closed, return the tracker to home
+        print("Closed, moving tracker to 'home'...")
+
+    def on_power_on(self):
+        # Turn on SoCal main power
+        print('Powering down SoCal.')
+        return
+    
+    def on_power_off(self):
+        # Turn off SoCal main power
+        print('Powering on SoCal')
+        return
