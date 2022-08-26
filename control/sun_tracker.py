@@ -10,7 +10,7 @@
 ############################################################
 
 import socket
-import eko_commands as eko 
+from . import eko_commands as eko 
 
 # Global static variables
 TCP_IP   = '192.168.23.242' # Lantronix UDS2100 IP address
