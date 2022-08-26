@@ -1,18 +1,14 @@
 # KPF-SoCal communication & control
 
-Code for sending/recieving commands to the solar tracker.
+The KPF Solar Calibrator has two main components which are controlled, the sun tracker itself and the enclosure in which it lives.
 
-Communication is over RS-232, through Lantronix UDS2100 over ethernet.
+## EKO STR-22G Sun Tracker interface specifications
 
-Serial commands wrapped in Python using `socket`.
-
-Communication with Keck via the Keck Task Library (KTL) using [`KTLPython`][http://spg.ucolick.org/KTLPython/]
+Communication is over RS-232, through Lantronix UDS2100 over ethernet. Serial commands wrapped in Python using `socket`.
 
 =======
 Lantronix IP: 192.168.23.242
 Local port: 10001
-
-## EKO Solar Tracker Interface specifications
 
 |                |                     |
 |:---------------|:--------------------|
@@ -22,3 +18,12 @@ Local port: 10001
 |Parity          | None                |
 |Stop bit        | 1 bit               |
 |Flow control    | None                |
+
+## Fornax Dome specifications
+
+Communication is over WebSocket, through the DomeGuard computer over ethernet. Commands are
+wrapped in python using `websockets`.
+
+=======
+DomeGuard IP: 192.168.23.244
+WebServer port: 4030 

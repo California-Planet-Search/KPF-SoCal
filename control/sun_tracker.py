@@ -1,12 +1,11 @@
 ############################################################
 #
-#  socal.py
+#  sun_tracker.py
 #
-#  Object-oriented SoCal module containing 
-#  wrappers for commands/routines 
+#  Objects/functions for controlling the SoCal tracker
 #
 #  Author: Ryan Rubenzahl
-#  Last edit: 3/31/2022
+#  Last edit: 8/25/2022
 #
 ############################################################
 
@@ -17,7 +16,7 @@ import eko_commands as eko
 TCP_IP   = '192.168.23.242' # Lantronix UDS2100 IP address
 TCP_PORT = 10001 # Local port for serial 1 on UDS2100 
 
-class SoCal(object):
+class EKOSunTracker(object):
 
     def __init__(self):
         '''
@@ -218,32 +217,3 @@ class SoCal(object):
             else:
                 print(response)
 
-    def initialize(ser):
-        '''
-        Initialize the SoCal after powering on
-
-        Args:
-            ser: pyserial object of the serial port to send the command to
-
-        Returns:
-            status: status of tracker after startup
-        '''
-
-        # TODO
-        # Get current tracking mode
-        # Confirm auto tracking mode
-        # If not, set to auto
-
-        # Confirm date/time is correct
-        # Confirm lat/lon is correct
-
-        # Confirm pointing at sun
-            # Get current pointing angle
-            # Estimate sun position and convert to alt/az
-
-        # Confirm active tracking
-
-        # Record test observation
-        status = 'Date/Location/other info we care about'
-        status += 'Pointing mode: '
-        return status

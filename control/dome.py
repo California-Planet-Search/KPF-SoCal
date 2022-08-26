@@ -1,8 +1,19 @@
+############################################################
+# 
+#  dome.py
+#
+#  Object/functions for controlling the SoCal dome 
+#
+#  Author: Ryan Rubenzahl
+#  Last edit: 8/25/2022
+#
+############################################################
+
 import websocket
 
 DOME_IP = "192.168.23.244"
 
-class Dome(object):
+class DougDimmadome(object):
 
     possible_responses = ["0 OK",
                           "1 Rejected. Unknown command",
