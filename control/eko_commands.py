@@ -87,8 +87,8 @@ def set_location(lat, lon):
     Returns:
         command: string formatted for EKO tracker to be used in send_command()
     '''
-    assert lat >= -90 and alt <= 90, 'Latitude {:.3f} outside limits [-90, 90] (+North, -South)'.format(alt)
-    assert lon >= -180 and az <= 180, 'Longitude {:.3f} outside limits [-180, 180] (+East, -West)'.format(az)
+    assert lat >= -90 and lat <= 90, 'Latitude {:.3f} outside limits [-90, 90] (+North, -South)'.format(lat)
+    assert lon >= -180 and lon <= 180, 'Longitude {:.3f} outside limits [-180, 180] (+East, -West)'.format(lon)
     command = 'LO,{:+.5f},{:+.5f}\r'.format(lon, lat).encode()
     return command
 
