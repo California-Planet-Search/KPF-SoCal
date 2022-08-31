@@ -6,51 +6,56 @@
 #  definining valid states and how to move between them 
 #
 #  Author: Ryan Rubenzahl
-#  Last edit: 8/25/2022
 #
 ############################################################
 
+import Dispatcher
 from transitions import Machine
+from transitions.extensions import GraphMachine # For visualizing the state machine
 # from irradiance import log_irrad # TODO: rewrite function to work in this context
-from control import dome, sun_tracker
 
 class SoCal(object):
 
     # SoCal operational states
-    states = ['Powered off',    # Tracker stowed at 'home' & dome CLOSED, powered OFF 
-              'Stowed',         # Tracker stowed at 'home' & dome CLOSED, powered ON 
-              'On-sky',         # Dome OPEN and tracker is in active guiding mode 
-              'Dome in motion', # Dome is opening or closing 
-              'ERROR STATE',    # Undefined/error state 
+    states = ['PoweredOff',   # Tracker stowed at 'home' & dome CLOSED, powered OFF 
+              'Stowed',       # Tracker stowed at 'home' & dome CLOSED, powered ON 
+              'OnSky',        # Dome OPEN and tracker is in active guiding mode 
+              'DomeInMotion', # Dome is opening or closing 
+              'ERROR_STATE',  # Undefined/error state 
              ]
-
     # Valid transitions between predefined SoCal operational states
     transitions = [
-        {'trigger': 'power_on',
-            'source': 'Powered off', 'dest':'Stowed'},
-        {'trigger': 'open',     
-            'source': 'Stowed', 'dest':'Dome in motion',
-            'conditions': ['is_safe_to_open'], # only open if safe to do so
-            'after': ['check_opened']},
+        {'trigger': 'power_on', 
+            'source': 'PoweredOff', 'dest':'Stowed', 'before': 'power_on_system'},
+        {'trigger': 'open', 
+            'source': 'Stowed', 'dest':'DomeInMotion',
+            'conditions': ['is_safe_to_open'], 'before': 'open_dome'},
         {'trigger': 'opened',
-            'source': 'Dome in motion', 'dest': 'On-sky',
-            'after': ['check_on_Sun']}, # and afterwards, verify that we're on-Sun
-        {'trigger': 'close',
-            'source': 'On-sky', 'dest': 'Dome in motion'},
-        {'trigger': 'closed',
-            'source': 'Dome in motion', 'dest': 'Stowed'},
+            'source': 'DomeInMotion', 'dest': 'OnSky', 'before': 'start_guiding'},
+        {'trigger': 'stow',
+            'source': 'OnSky', 'dest': 'DomeInMotion', 'before': 'close_dome'},
+        {'trigger': 'stowed',
+            'source': 'DomeInMotion', 'dest': 'Stowed', 'before': 'home_tracker'},
         {'trigger': 'power_off', 
-            'source': 'Stowed', 'dest': 'Powered off'},
+            'source': 'Stowed', 'dest': 'PoweredOff', 'before': 'power_down_system'},
         {'trigger': 'errored',
-            'source': '*', 'dest': 'ERROR STATE'},
+            'source': '*', 'dest': 'ERROR_STATE'},
         ]
 
-    def __init__(self):
-
+    def __init__(self, graph=False):
+            
         # Initialize the state machine
-        self.machine = Machine(model=self, states=SoCal.states, 
-                               transitions=SoCal.transitions, initial='Powered off')
-
+        self.name = 'KPF Solar Calibrator'
+        if graph:
+            self.machine = GraphMachine(model=self, states=SoCal.states, show_conditions=True,
+                                transitions=SoCal.transitions, initial='PoweredOff')
+        else:
+            self.machine = Machine(model=self, states=SoCal.states,
+                                transitions=SoCal.transitions, initial='PoweredOff')
+        
+        # Connect to the dispatcher
+        self.dispatcher = Dispatcher.connect()
+        
     @property
     def is_safe_to_open(self):
         """ Verify conditions are safe to open """
@@ -58,14 +63,16 @@ class SoCal(object):
         return True 
     
     @property
-    def on_Sun(self):
+    def on_sun(self):
         """ Check that the tracker is pointed at the Sun """
-        # TODO: read pyrheliometer & check current alt/az vs. predicted & guiding offset
+        # TODO: open connection to and read from pyrheliometer (write to file) 
+        # TODO: verify pyrheliometer flux is reasonable
+        # TODO: check current alt/az vs. predicted & guiding offset
         return True 
 
-    def check_on_Sun(self):
+    def check_on_sun(self):
         # TODO: should this trigger anything else to happen (or not happen)?
-        if self.on_Sun:
+        if self.on_sun:
             print('Guiding on Sun. Get yer photons here!')
         else:
             print("Guiding failed. If it's not cloudy, check the sun sensor alignment.")
@@ -81,43 +88,49 @@ class SoCal(object):
         # 3. postcondition check: Did the device(s) successfully transition?
         #   - If not, move to ERROR STATE
 
-    def on_open(self):
-        # TODO: Tell dome to open
-        print('Opening SoCal dome...')
-        self.dome_status()
+    def open_dome(self):
+        ''' set domeopen True '''
 
-    def on_close(self):
-        # TODO: Tell dome to close
-        print('Closing SoCal dome...')
-        self.dome_status()
-
-    def dome_status(self):
-        opened = True # TODO: Return dome.status and verify opened
-        closed = False # TODO: Return dome.status and verify closed
-        undef  = not opened and not closed # Dome partway open?
-        if opened:
+        self.dispatcher.open_dome()
+        
+        # If the dome opened successfully, do transition "opened"
+        if self.dispatcher.domeopen():
             self.opened()
-        elif closed:
-            self.closed()
         else:
-            print('ERROR! The dome did not open.')
+            dome_status = self.dispatcher.get_dome_status()
+            print('ERROR! The dome did not open. In fact, it is {}'.format(dome_status['Dome state']))
             self.errored()
 
-    def on_opened(self):
+    def close_dome(self):
+        ''' set domeclosed True '''
+
+        self.dispatcher.close_dome()
+        
+        # If the dome closed successfully, transition "closed"
+        if self.dispatcher.domeclosed():
+            self.closed()
+        else:
+            dome_status = self.dispatcher.get_dome_status()
+            print('ERROR! The dome did not close. In fact, it is {}'.format(dome_status['Dome state']))
+            self.errored()
+
+    def start_guiding(self):
         # If the dome successfully opened, tell the tracker to start guiding
-        # Wait until tracker is done moving (check alt/az or simply wait for serial recv?)
-        print('Opened, setting tracker to active guiding mode...')
+        # set guiding True
+        print('Dome opened. Setting tracker to active guiding mode...')
+        self.dispatcher.start_guiding()
+        # Check that we're on-Sun
+        self.check_on_sun()
 
-    def on_closed(self):
+    def home_tracker(self):
         # If the dome successfully closed, return the tracker to home
-        print("Closed, moving tracker to 'home'...")
+        print("Dome closed. Moving tracker to 'home'...")
+        self.dispatcher.home_tracker()
 
-    def on_power_on(self):
-        # Turn on SoCal main power
-        print('Powering down SoCal.')
-        return
-    
-    def on_power_off(self):
+    def power_down_system(self):
         # Turn off SoCal main power
+        print('Powering off SoCal.')
+    
+    def power_on_system(self):
+        # Turn on SoCal main power
         print('Powering on SoCal')
-        return

@@ -23,10 +23,16 @@ class EKOSunTracker(object):
         Initialize SoCal object and open 
         the connection to the TCP/IP port
         '''
-        self.tracker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.tracker.connect((TCP_IP, TCP_PORT))
-        print('Connected to {} at Port {}'.format(*self.tracker.getpeername()))
-        
+        self.HOME_ALT = 0.0
+        self.HOME_AZ  = 0.0
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.connect((TCP_IP, TCP_PORT))
+        print('Connected to {} at Port {}'.format(*self.socket.getpeername()))
+
+    def close_connection(self):
+        self.socket.close()
+        print('Closed connection to {} at Port {}'.format(TCP_IP, TCP_PORT))
+
     def set_datetime(self, date, time):
         '''
         Set date and time (UTC)
@@ -39,7 +45,7 @@ class EKOSunTracker(object):
             Response from tracker.
         '''
         command = eko.set_datetime(date, time)
-        return eko.send_command(command, self.tracker, wait_for_response=True)
+        return eko.send_command(command, self.socket, wait_for_response=True)
 
     def set_location(self, lat, lon):
         '''
@@ -54,7 +60,7 @@ class EKOSunTracker(object):
             Response from tracker.
         '''
         command = eko.set_location(lat, lon)
-        return eko.send_command(command, self.tracker, wait_for_response=True)
+        return eko.send_command(command, self.socket, wait_for_response=True)
 
     def set_tracking_mode(self, mode):
         '''
@@ -72,7 +78,7 @@ class EKOSunTracker(object):
             Response from tracker.
         '''
         command = eko.set_tracking_mode(mode)
-        return eko.send_command(command, self.tracker, wait_for_response=True)
+        return eko.send_command(command, self.socket, wait_for_response=True)
 
     def set_position(self, alt, az):
         '''
@@ -86,7 +92,7 @@ class EKOSunTracker(object):
             Response from tracker.
         '''
         command = eko.set_position(alt, az)
-        return eko.send_command(command, self.tracker, wait_for_response=True)
+        return eko.send_command(command, self.socket, wait_for_response=True)
     
     def get_datetime(self):
         '''
@@ -95,7 +101,7 @@ class EKOSunTracker(object):
         Returns:
             datetime: datetime string formatted as YYYY-MM-DDThh:mm:ss
         '''
-        return eko.get_datetime(self.tracker)
+        return eko.get_datetime(self.socket)
 
     def get_location(self):
         '''
@@ -105,7 +111,7 @@ class EKOSunTracker(object):
             lat: (float) latitude in decimal degrees, + North, - South (e.g. 35.67199)
             lon: (float) longitude in decimal degrees, + East, - West (e.g. 139.67500)
         '''
-        return eko.get_location(self.tracker)
+        return eko.get_location(self.socket)
 
     def get_tracking_mode(self):
         '''
@@ -118,7 +124,7 @@ class EKOSunTracker(object):
                 '2': Sun-sensor tracking mode
                 '3': Sun-sensor with learning tracking mode
         '''
-        return eko.get_tracking_mode(self.tracker)
+        return eko.get_tracking_mode(self.socket)
 
     def get_corrected_position(self):
         '''
@@ -129,7 +135,7 @@ class EKOSunTracker(object):
             alt: (float) altitude in decimal degrees, + Upper, - Lower (e.g. 15.123)
             az:  (float) azimuth in decimal degrees, + West, - East, (e.g. 123.133)
         '''
-        return eko.get_corrected_position(self.tracker)
+        return eko.get_corrected_position(self.socket)
     
     def get_calculated_position(self):
         '''
@@ -140,7 +146,7 @@ class EKOSunTracker(object):
             alt: (float) altitude in decimal degrees, + Upper, - Lower (e.g. 15.123)
             az:  (float) azimuth in decimal degrees, + West, - East, (e.g. 123.133)
         '''
-        return eko.get_calculated_position(self.tracker)
+        return eko.get_calculated_position(self.socket)
    
     def get_sun_sensor_offset(self):
         '''
@@ -151,7 +157,7 @@ class EKOSunTracker(object):
             ha: (float) horizontal angle in decimal degrees
             va: (float) vertical angle in decimal degrees
         '''
-        return eko.get_sun_sensor_offset(self.tracker)
+        return eko.get_sun_sensor_offset(self.socket)
     
     def get_firmware_version(self):
         '''
@@ -160,7 +166,7 @@ class EKOSunTracker(object):
         Returns:
             v: (str) firmware version (latest version as of May 15, 2003 is 3.00)
         '''
-        return eko.get_firmware_version(self.tracker)
+        return eko.get_firmware_version(self.socket)
 
 
     def slew(self, alt, az, new_mode='0'):

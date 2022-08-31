@@ -9,9 +9,11 @@
 #
 ############################################################
 
+import asyncio
 import websocket
 
 DOME_IP = "192.168.23.244"
+DOME_PORT = "4030"
 
 class DougDimmadome(object):
 
@@ -26,29 +28,35 @@ class DougDimmadome(object):
                          ]
 
     def __init__(self):
+        self.wsPath = "ws://{}:{}/ws".format(DOME_IP, DOME_PORT)
         self.connect_ws()
 
     def connect_ws(self):
         """ Open the WebSocket connection """
         self.ws = websocket.WebSocket()
-        wsPath = "ws://{}:4030/ws".format(DOME_IP)
-        self.ws.connect(wsPath)
-        print('Opened WebSocket at {}'.format(wsPath))
+        self.ws.connect(self.wsPath)
+        self.ws.settimeout(60)
+        print('Opened WebSocket at {}'.format(self.wsPath))
 
     def close_ws(self):
         """ Close the WebSocket connection """
         self.ws.close()
         if not self.ws.connected:
-           print('WebSocket connection closed.')
+           print('Closed WebSocket connection at {}.'.format(self.wsPath))
         else:
             print('WebSocket connection failed to close.')
-    
+
     def __execCommands(self, cmd):
         """ Send command to the DomeGuard and recieve response """
+        # self.ws.send(cmd)
+        # result = self.ws.recv()
+        # return result
         self.ws.send(cmd)
-        result = self.ws.recv()
+        result = [self.ws.recv()]
+        while not result[-1] in self.possible_responses:
+            result.append(self.ws.recv())
         return result
-    
+                
     def open(self):
         """ Open the dome """
         return self.__execCommands("open")
@@ -64,10 +72,11 @@ class DougDimmadome(object):
     def status(self, human_readable=False):
         """ Check the status of the dome """
         if human_readable:
-            return self.__execCommands("status")
+            response = self.__execCommands("status")
+            print(response)
         else:
-            result = self.__execCommands("s")
-            print(result)
+            response = self.__execCommands("s")
+        return response
 
     def set_ch1(self, state):
         """
