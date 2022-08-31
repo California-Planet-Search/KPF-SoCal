@@ -18,6 +18,7 @@ mode_description = {'0': 'Manual tracking mode',
                     '3': 'Sun-sensor with learning tracking mode'
                    }
 error_msg = b'ERR\r'
+success_msg = b'OK\r'
 
 def send_command(command, tracker, wait_for_response=False):
     '''
@@ -41,7 +42,7 @@ def send_command(command, tracker, wait_for_response=False):
     print('Sent {} bytes'.format(bytes_sent))
     time.sleep(0.1)
     if wait_for_response: 
-        complete_msg = [b'OK\r', error_msg]
+        complete_msg = [success_msg, error_msg]
         response = b''
         while not response in complete_msg: 
             response += tracker.recv(BUFFER_SIZE)
@@ -86,8 +87,8 @@ def set_location(lat, lon):
     Returns:
         command: string formatted for EKO tracker to be used in send_command()
     '''
-    assert lat >= -90 and alt <= 90, 'Latitude {:.3f} outside limits [-90, 90] (+North, -South)'.format(alt)
-    assert lon >= -180 and az <= 180, 'Longitude {:.3f} outside limits [-180, 180] (+East, -West)'.format(az)
+    assert lat >= -90 and lat <= 90, 'Latitude {:.3f} outside limits [-90, 90] (+North, -South)'.format(lat)
+    assert lon >= -180 and lon <= 180, 'Longitude {:.3f} outside limits [-180, 180] (+East, -West)'.format(lon)
     command = 'LO,{:+.5f},{:+.5f}\r'.format(lon, lat).encode()
     return command
 
@@ -125,7 +126,7 @@ def set_position(alt, az):
     Returns:
         command: string formatted for EKO tracker to be used in send_command()
     '''
-    assert alt >= 0 and alt < 90, 'Alt {:.3f} outside limits [0, 90]'.format(alt)
+    assert alt >= 0 and alt < 90, 'Alt {:.3f} outside limits [0, 90)'.format(alt)
     assert az >= -180 and az <= 180, 'Az {:.3f} outside limits [-180, 180]'.format(az)
     command = 'MP,{:.3f},{:.3f}\r'.format(az, alt).encode()
     return command

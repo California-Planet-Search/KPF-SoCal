@@ -1,33 +1,38 @@
 ############################################################
 #
-#  socal.py
+#  sun_tracker.py
 #
-#  Object-oriented SoCal module containing 
-#  wrappers for commands/routines 
+#  Objects/functions for controlling the SoCal tracker
 #
 #  Author: Ryan Rubenzahl
-#  Last edit: 3/31/2022
+#  Last edit: 8/25/2022
 #
 ############################################################
 
 import socket
-import eko_commands as eko 
+from . import eko_commands as eko 
 
 # Global static variables
 TCP_IP   = '192.168.23.242' # Lantronix UDS2100 IP address
 TCP_PORT = 10001 # Local port for serial 1 on UDS2100 
 
-class SoCal(object):
+class EKOSunTracker(object):
 
     def __init__(self):
         '''
         Initialize SoCal object and open 
         the connection to the TCP/IP port
         '''
-        self.tracker = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.tracker.connect((TCP_IP, TCP_PORT))
-        print('Connected to {} at Port {}'.format(*self.tracker.getpeername()))
-        
+        self.HOME_ALT = 0.0
+        self.HOME_AZ  = 0.0
+        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket.connect((TCP_IP, TCP_PORT))
+        print('Connected to {} at Port {}'.format(*self.socket.getpeername()))
+
+    def close_connection(self):
+        self.socket.close()
+        print('Closed connection to {} at Port {}'.format(TCP_IP, TCP_PORT))
+
     def set_datetime(self, date, time):
         '''
         Set date and time (UTC)
@@ -40,7 +45,7 @@ class SoCal(object):
             Response from tracker.
         '''
         command = eko.set_datetime(date, time)
-        return eko.send_command(command, self.tracker, wait_for_response=True)
+        return eko.send_command(command, self.socket, wait_for_response=True)
 
     def set_location(self, lat, lon):
         '''
@@ -55,7 +60,7 @@ class SoCal(object):
             Response from tracker.
         '''
         command = eko.set_location(lat, lon)
-        return eko.send_command(command, self.tracker, wait_for_response=True)
+        return eko.send_command(command, self.socket, wait_for_response=True)
 
     def set_tracking_mode(self, mode):
         '''
@@ -73,7 +78,7 @@ class SoCal(object):
             Response from tracker.
         '''
         command = eko.set_tracking_mode(mode)
-        return eko.send_command(command, self.tracker, wait_for_response=True)
+        return eko.send_command(command, self.socket, wait_for_response=True)
 
     def set_position(self, alt, az):
         '''
@@ -87,7 +92,7 @@ class SoCal(object):
             Response from tracker.
         '''
         command = eko.set_position(alt, az)
-        return eko.send_command(command, self.tracker, wait_for_response=True)
+        return eko.send_command(command, self.socket, wait_for_response=True)
     
     def get_datetime(self):
         '''
@@ -96,7 +101,7 @@ class SoCal(object):
         Returns:
             datetime: datetime string formatted as YYYY-MM-DDThh:mm:ss
         '''
-        return eko.get_datetime(self.tracker)
+        return eko.get_datetime(self.socket)
 
     def get_location(self):
         '''
@@ -106,7 +111,7 @@ class SoCal(object):
             lat: (float) latitude in decimal degrees, + North, - South (e.g. 35.67199)
             lon: (float) longitude in decimal degrees, + East, - West (e.g. 139.67500)
         '''
-        return eko.get_location(self.tracker)
+        return eko.get_location(self.socket)
 
     def get_tracking_mode(self):
         '''
@@ -119,7 +124,7 @@ class SoCal(object):
                 '2': Sun-sensor tracking mode
                 '3': Sun-sensor with learning tracking mode
         '''
-        return eko.get_tracking_mode(self.tracker)
+        return eko.get_tracking_mode(self.socket)
 
     def get_corrected_position(self):
         '''
@@ -130,7 +135,7 @@ class SoCal(object):
             alt: (float) altitude in decimal degrees, + Upper, - Lower (e.g. 15.123)
             az:  (float) azimuth in decimal degrees, + West, - East, (e.g. 123.133)
         '''
-        return eko.get_corrected_position(self.tracker)
+        return eko.get_corrected_position(self.socket)
     
     def get_calculated_position(self):
         '''
@@ -141,7 +146,7 @@ class SoCal(object):
             alt: (float) altitude in decimal degrees, + Upper, - Lower (e.g. 15.123)
             az:  (float) azimuth in decimal degrees, + West, - East, (e.g. 123.133)
         '''
-        return eko.get_calculated_position(self.tracker)
+        return eko.get_calculated_position(self.socket)
    
     def get_sun_sensor_offset(self):
         '''
@@ -152,7 +157,7 @@ class SoCal(object):
             ha: (float) horizontal angle in decimal degrees
             va: (float) vertical angle in decimal degrees
         '''
-        return eko.get_sun_sensor_offset(self.tracker)
+        return eko.get_sun_sensor_offset(self.socket)
     
     def get_firmware_version(self):
         '''
@@ -161,7 +166,7 @@ class SoCal(object):
         Returns:
             v: (str) firmware version (latest version as of May 15, 2003 is 3.00)
         '''
-        return eko.get_firmware_version(self.tracker)
+        return eko.get_firmware_version(self.socket)
 
 
     def slew(self, alt, az, new_mode='0'):
@@ -218,32 +223,3 @@ class SoCal(object):
             else:
                 print(response)
 
-    def initialize(ser):
-        '''
-        Initialize the SoCal after powering on
-
-        Args:
-            ser: pyserial object of the serial port to send the command to
-
-        Returns:
-            status: status of tracker after startup
-        '''
-
-        # TODO
-        # Get current tracking mode
-        # Confirm auto tracking mode
-        # If not, set to auto
-
-        # Confirm date/time is correct
-        # Confirm lat/lon is correct
-
-        # Confirm pointing at sun
-            # Get current pointing angle
-            # Estimate sun position and convert to alt/az
-
-        # Confirm active tracking
-
-        # Record test observation
-        status = 'Date/Location/other info we care about'
-        status += 'Pointing mode: '
-        return status
