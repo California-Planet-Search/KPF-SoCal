@@ -167,7 +167,9 @@ class SoCal(object):
     def stow_tracker(self):
         # If the dome successfully closed, return the tracker to home
         print("Dome closed. Moving tracker to 'home'...")
-        self.dispatcher.home_tracker()
+        self.dispatcher.alt_to_slew(self.dispatcher.tracker.HOME_ALT)
+        self.dispatcher.az_to_slew(self.dispatcher.tracker.HOME_AZ)
+        self.dispatcher.slew(True)
 
     def did_stow(self):
         # Postcondition check for transition `close`

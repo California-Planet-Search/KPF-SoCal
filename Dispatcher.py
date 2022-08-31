@@ -48,7 +48,7 @@ class SoCalDispatcher(object):
         except:
             print('Unable to connect to EKO Sun Tracker at {}/'.format(sun_tracker.TCP_IP, sun_tracker.TCP_PORT))
         
-        # Keywords 
+        # High-level keywords 
         self._is_guiding = False
         self._slew = False
         self._alt_to_slew = None
@@ -56,18 +56,7 @@ class SoCalDispatcher(object):
         self._domeopen = False
         self._domeclosed = True
 
-    # KTL functions to wrap dome/tracker commands
-    # TODO: Make these protected so only the SoCalDispatcher can read/write
-
     ############ EKO Sun Tracker Keywords ############
-    def home_tracker(self):
-        '''
-        Slew the tracker to its home position
-        '''
-        self.alt_to_slew(self.tracker.HOME_ALT)
-        self.az_to_slew(self.tracker.HOME_AZ)
-        self.slew(True)
-
     @property
     def is_guiding(self):
         return self._is_guiding
@@ -255,7 +244,6 @@ class SoCalDispatcher(object):
 
 
     ############ PYRHELIOMETER ############
-
     # solar_irrad	read only	FLOAT
     # output_voltage	read only	FLOAT
     # heater_temp	read only	FLOAT
