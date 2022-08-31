@@ -26,20 +26,25 @@ class SoCal(object):
     # Valid transitions between predefined SoCal operational states
     transitions = [
         {'trigger': 'power_on', 
-            'source': 'PoweredOff', 'dest':'Stowed', 'before': 'power_on_system'},
+            'source': 'PoweredOff', 'dest':'Stowed', 
+            'prepare': 'can_power_on', 'before': 'power_on_system', 'after': 'did_power_on'},
         {'trigger': 'open', 
             'source': 'Stowed', 'dest':'DomeInMotion',
-            'conditions': ['is_safe_to_open'], 'before': 'open_dome'},
-        {'trigger': 'opened',
-            'source': 'DomeInMotion', 'dest': 'OnSky', 'before': 'start_guiding'},
+            'conditions': ['is_safe_to_open'], 
+            'prepare': 'can_open', 'before': 'open_dome', 'after': 'did_open'},
+        {'trigger': 'guide',
+            'source': 'DomeInMotion', 'dest': 'OnSky', 
+            'prepare': 'can_guide', 'before': 'start_guiding', 'after': 'are_guiding'},
+        {'trigger': 'close',
+            'source': 'OnSky', 'dest': 'DomeInMotion', 
+            'prepare': 'can_close', 'before': 'close_dome', 'after': 'did_close'},
         {'trigger': 'stow',
-            'source': 'OnSky', 'dest': 'DomeInMotion', 'before': 'close_dome'},
-        {'trigger': 'stowed',
-            'source': 'DomeInMotion', 'dest': 'Stowed', 'before': 'home_tracker'},
+            'source': 'DomeInMotion', 'dest': 'Stowed', 
+            'prepare': 'can_stow', 'before': 'stow_tracker', 'after': 'did_stow'},
         {'trigger': 'power_off', 
-            'source': 'Stowed', 'dest': 'PoweredOff', 'before': 'power_down_system'},
-        {'trigger': 'errored',
-            'source': '*', 'dest': 'ERROR_STATE'},
+            'source': 'Stowed', 'dest': 'PoweredOff', 
+            'prepare': 'can_power_off', 'before': 'power_down_system', 'after': 'did_power_off'},
+        {'trigger': 'errored', 'source': '*', 'dest': 'ERROR_STATE'},
         ]
 
     def __init__(self, graph=False):
@@ -77,7 +82,7 @@ class SoCal(object):
         else:
             print("Guiding failed. If it's not cloudy, check the sun sensor alignment.")
 
-    ########## TRANSITION DEFINITIONS ##########
+    ################################# TRANSITION DEFINITIONS #################################
     # Three stages to every transition
         # 1. precondition check: Is everything in order to make the transition?
         #   - Is the KTL service running?
@@ -88,49 +93,96 @@ class SoCal(object):
         # 3. postcondition check: Did the device(s) successfully transition?
         #   - If not, move to ERROR STATE
 
+    ############################ power_on: PoweredOff --> Stowed ############################
+    def can_power_on(self):
+        # Precondition check for transition `power_on`
+        return True
+
+    def power_on_system(self):
+        # Turn on SoCal main power
+        print('Powering on SoCal')
+
+    def did_power_on(self):
+        # Postcondition check for transition `power_on`
+        return True
+
+    ############################ open: Stowed --> DomeInMotion ############################
+    def can_open(self):
+        # Precondition check for transition `open`
+        return True
+
     def open_dome(self):
         ''' set domeopen True '''
-
         self.dispatcher.open_dome()
-        
-        # If the dome opened successfully, do transition "opened"
+
+    def did_open(self):
+        # Postcondition check for transition `open`
+        # If the dome opened successfully, do transition 'guide'
         if self.dispatcher.domeopen():
-            self.opened()
+            self.guide()
         else:
             dome_status = self.dispatcher.get_dome_status()
             print('ERROR! The dome did not open. In fact, it is {}'.format(dome_status['Dome state']))
             self.errored()
 
+    ############################ guide: DomeInMotion --> OnSky ############################
+    def can_guide(self):
+        # Precondition check for transition `guide`
+        # ping tracker
+        return True
+
+    def start_guiding(self):
+        ''' set guiding True '''
+        print('Dome opened. Setting tracker to active guiding mode...')
+        self.dispatcher.start_guiding()
+
+    def are_guiding(self):
+        # Postcondition check for transition `guide`
+        self.check_on_sun()
+
+    ############################ close: OnSky --> DomeInMotion ############################
+    def can_close(self):
+        # Precondition check for transition `close`
+        return True
+
     def close_dome(self):
         ''' set domeclosed True '''
-
         self.dispatcher.close_dome()
-        
-        # If the dome closed successfully, transition "closed"
+
+    def did_close(self):
+        # Postcondition check for transition `close`
         if self.dispatcher.domeclosed():
-            self.closed()
+            self.stow()
         else:
             dome_status = self.dispatcher.get_dome_status()
             print('ERROR! The dome did not close. In fact, it is {}'.format(dome_status['Dome state']))
-            self.errored()
+            self.errored()    
+               
+    ############################ close: DomeInMotion --> Stowed ############################
+    def can_stow(self):
+        # Precondition check for transition `stow`
+        # ping tracker
+        return True
 
-    def start_guiding(self):
-        # If the dome successfully opened, tell the tracker to start guiding
-        # set guiding True
-        print('Dome opened. Setting tracker to active guiding mode...')
-        self.dispatcher.start_guiding()
-        # Check that we're on-Sun
-        self.check_on_sun()
-
-    def home_tracker(self):
+    def stow_tracker(self):
         # If the dome successfully closed, return the tracker to home
         print("Dome closed. Moving tracker to 'home'...")
         self.dispatcher.home_tracker()
 
+    def did_stow(self):
+        # Postcondition check for transition `close`
+        # confirm tracker pointing at home
+        return True
+
+    ############################ close: Stowed --> PoweredOff ############################
+    def can_power_off(self):
+        # Precondition check for transition `power_off`
+        return True
+
     def power_down_system(self):
         # Turn off SoCal main power
         print('Powering off SoCal.')
-    
-    def power_on_system(self):
-        # Turn on SoCal main power
-        print('Powering on SoCal')
+
+    def did_power_off(self):
+        # Postcondition check for transition `power_off`
+        return True

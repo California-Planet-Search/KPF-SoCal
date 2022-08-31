@@ -9,7 +9,6 @@
 #
 ############################################################
 
-import asyncio
 import websocket
 
 DOME_IP = "192.168.23.244"
@@ -48,9 +47,6 @@ class DougDimmadome(object):
 
     def __execCommands(self, cmd):
         """ Send command to the DomeGuard and recieve response """
-        # self.ws.send(cmd)
-        # result = self.ws.recv()
-        # return result
         self.ws.send(cmd)
         result = [self.ws.recv()]
         while not result[-1] in self.possible_responses:
