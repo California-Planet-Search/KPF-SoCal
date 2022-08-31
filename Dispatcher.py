@@ -48,15 +48,24 @@ class SoCalDispatcher(object):
         except:
             print('Unable to connect to EKO Sun Tracker at {}/'.format(sun_tracker.TCP_IP, sun_tracker.TCP_PORT))
         
-        # High-level keywords 
-        self._is_guiding = False
-        self._slew = False
+        # KTL keywords 
+        self._is_guiding  = False
+        self._slew        = False
         self._alt_to_slew = None
         self._az_to_slew  = None
-        self._domeopen = False
-        self._domeclosed = True
+        self._domeopen       = False
+        self._domeclosed     = True
+        self._dome_in_motion = False
+        self._solar_irrad        = 0
+        self._pyr_output_voltage = 0
+        self._pyr_heater_tem     = 0
+        self._pyr_sensitivity    = 0
+        self._clear_sky	         = 0    # solar_irrad > X*clear_sky_model - exact threshold TBD
+        self._tracker_online       = False  # self.tracker has connection
+        self._pyrheliometer_online = False  # self.pyrheliometer has connection
+        self._dome_online          = False  # self.dome has connection
 
-    ############ EKO Sun Tracker Keywords ############
+    ############################### EKO Sun Tracker Keywords ##############################
     @property
     def is_guiding(self):
         return self._is_guiding
@@ -243,22 +252,48 @@ class SoCalDispatcher(object):
                 and (self.guiding_offset_alt < THRESHOLD) and (self.guiding_offset_az < THRESHOLD)
 
 
-    ############ PYRHELIOMETER ############
-    # solar_irrad	read only	FLOAT
-    # output_voltage	read only	FLOAT
-    # heater_temp	read only	FLOAT
-    # sensitivity	locked	FLOAT
-    # clear_sky	read only	solar_irrad > X*clear_sky_model - exact threshold TBD
+    #################################### PYRHELIOMETER ####################################
+    @property
+    def solar_irrad(self):
+        return self._solar_irrad
 
+    @solar_irrad.setter
+    def solar_irrad(self, irrad):
+        self._solar_irrad = irrad
 
-    ############ DOME ############
-    # domeopen	read/write	BOOL
-    # domeclose	read/write	BOOL
-    # dome_in_motion	    read only	BOOL
-    # tracker_online	    read only	checks if can `ping 192.168.23.242` and has active open connection at port 10001
-    # pyrheliometer_online	read only	checks if can `ping 192.168.23.243` and has active open connection at port 502
-    # enclosure_online	    read only	checks if can `ping 192.168.23.244` and has active open connection
-    
+    @property
+    def pyr_output_voltage(self):
+        return self._pyr_output_voltage
+
+    @pyr_output_voltage.setter
+    def pyr_output_voltage(self, voltage):
+        self._pyr_output_voltage = voltage
+
+    @property
+    def pyr_heater_temp(self):
+        return self._pyr_heater_temp
+
+    @pyr_heater_temp.setter
+    def pyr_heater_temp(self, temperature):
+        self._pyr_heater_temp = temperature
+
+    @property
+    def pyr_sensitivity(self):
+        return self._pyr_sensitivity
+
+    @pyr_sensitivity.setter
+    def pyr_heater_temp(self, sensitivity):
+        self._pyr_sensitivity = sensitivity
+
+    @property	
+    def clear_sky(self):
+        return self._clear_sky	
+
+    @clear_sky.setter
+    def clear_sky(self, is_sky_clear):
+        self._clear_sky = is_sky_clear
+
+    ######################################## DOME ########################################
     @property
     def domeopen(self):
         return self._domeopen
@@ -275,6 +310,14 @@ class SoCalDispatcher(object):
     def domeclosed(self, val):
         self._domeclosed = val
 
+    @property
+    def dome_in_motion(self):
+        return self._dome_in_motion
+
+    @dome_in_motion.setter
+    def dome_in_motion(self, val):
+        self._dome_in_motion = val
+
     def monitor_dome_in_motion(self):
         ''''
         Monitor the state of the dome while the motor current is nonzero
@@ -284,7 +327,7 @@ class SoCalDispatcher(object):
         '''
         dome_status = self.get_dome_status()
         while not (dome_status['Motor current'] == 0):
-            self.dome_in_motion = True
+            self.dome_in_motion(True)
             print('Dome in motion...')
             time.sleep(5)
             if not (dome_status['Dome state'] == 'Unknown'):
@@ -294,7 +337,7 @@ class SoCalDispatcher(object):
             time.sleep(0.5)
             dome_status = self.get_dome_status()
         print('Dome move complete.')
-        self.dome_in_motion = False
+        self.dome_in_motion(False)
         return dome_status
 
     def open_dome(self):
@@ -361,3 +404,16 @@ class SoCalDispatcher(object):
             dome_status = 'UNKNOWN'
             print('UNKNOWN DOME ERROR:', response)
         return dome_status
+
+    #################################### CONNECTIVITY ####################################
+    @property
+    def tracker_online(self):
+        return self.tracker.socket.getpeername() # TODO: how to check this
+
+    @property
+    def pyrheliometer_online(self):
+        return True # TODO: how to check this
+
+    @property
+    def dome_online(self):
+        return self.dome.ws.connected
