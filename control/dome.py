@@ -65,14 +65,17 @@ class DougDimmadome(object):
         """ Halt the dome motor """
         return self.__execCommands("stop")
     
-    def status(self, human_readable=False):
+    def status(self, short=False, verbose=False):
         """ Check the status of the dome """
-        if human_readable:
-            response = self.__execCommands("status")
-            print(response)
+        if not short:
+            result = self.__execCommands("status")
+            if verbose and result[-1] == self.possible_responses[0]:
+                print(result[0])
         else:
-            response = self.__execCommands("s")
-        return response
+            status, response = self.__execCommands("s")
+            if verbose and result[-1] == self.possible_responses[0]:
+                print(result[0])
+        return result
 
     def set_ch1(self, state):
         """

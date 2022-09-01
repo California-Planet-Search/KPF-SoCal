@@ -11,6 +11,7 @@
 ############################################################
 
 import time
+import numpy as np
 from control import dome, sun_tracker
 
 dispatcher = None
@@ -39,52 +40,52 @@ class SoCalDispatcher(object):
         # Try to open a connection to the Dome
         try:
             self.dome = dome.DougDimmadome()
-        except:
+            dome_status = self.get_dome_status()
+            self._is_domeopen    = (dome_status['Status'] == 'Open')
+            self._is_domeclosed  = (dome_status['Status'] == 'Closed')
+            self._dome_in_motion = not (dome_status['Motor']['current'] == 0)
+            self._dome_online    = self.dome.ws.connected
+        except Exception as e:
             print('Unable to connect to DomeGuard at {}/{}'.format(dome.DOME_IP, dome.DOME_PORT))
+            print(repr(e))
+            self._dome_online = False
 
         # Try to open a connection to the tracker
         try:
             self.tracker = sun_tracker.EKOSunTracker()
+            self._tracker_online = True
         except:
             print('Unable to connect to EKO Sun Tracker at {}/'.format(sun_tracker.TCP_IP, sun_tracker.TCP_PORT))
+            self._tracker_online = False
         
-        # KTL keywords 
-        self._is_guiding  = False
-        self._slew        = False
+        # KTL keywords with hardcoded default values
+        self._is_slewing  = False
         self._alt_to_slew = None
         self._az_to_slew  = None
-        self._domeopen       = False
-        self._domeclosed     = True
-        self._dome_in_motion = False
         self._solar_irrad        = 0
         self._pyr_output_voltage = 0
         self._pyr_heater_tem     = 0
         self._pyr_sensitivity    = 0
         self._clear_sky	         = 0    # solar_irrad > X*clear_sky_model - exact threshold TBD
-        self._tracker_online       = False  # self.tracker has connection
         self._pyrheliometer_online = False  # self.pyrheliometer has connection
-        self._dome_online          = False  # self.dome has connection
 
     ############################### EKO Sun Tracker Keywords ##############################
     @property
     def is_guiding(self):
-        return self._is_guiding
+        return self.tracking_mode == '3'
 
-    @is_guiding.setter
-    def is_guiding(self, new_is_guiding):
-        '''
-        Set the tracker to be actively guiding or not (manual pointing mode)
-        '''
-        if new_is_guiding and not self.is_guiding:
-            self.slew(True)
-            self.tracking_mode('3')
-            self.slew(False) # TODO: how to do check to confirm tracker is done moving
-        elif not new_is_guiding and self.is_guiding:
-            self.tracking_mode('0')
-        else:
-            return
-        self._is_guiding = new_is_guiding
-
+    @property
+    def is_on_sun(self):
+        time_in_waiting = 0
+        while self.is_slewing:
+            if time_in_waiting > 60:
+                print("Timeout waiting for slew to end")
+                return
+            # wait until done slewing
+            time.sleep(1)
+            time_in_waiting += 1
+        return not self.is_slewing and (self.tracking_mode == '3') # and irrad = nominal
+        
     @property
     def tracking_mode(self):
         return self.tracker.get_tracking_mode()
@@ -103,25 +104,28 @@ class SoCalDispatcher(object):
         self.tracker.set_tracking_mode(str(mode))
 
     @property
-    def slew(self):
-        return self._slew
+    def is_slewing(self):
+        return self._is_slewing
 
-    @slew.setter
-    def slew(self, slew_tracker):
+    @is_slewing.setter
+    def is_slewing(self, new_is_slewing):
+        self._is_slewing = new_is_slewing
+    
+    def slew(self):
         '''
         Slew the tracker, if `alt_to_slew` and `az_to_slew` are both set
         '''
-        assert not self.slew, 'Please wait until current slew is complete before sending a new slew command.'
-        assert slew_tracker, 'Keyword `slew` is already False.'
-        self._slew = True
+        # TODO: if guiding and slew=false make it stop guiding?
+        assert not self.is_slewing, 'Please wait until current slew is complete before sending a new slew command.'
         if (not self.az_to_slew is None) and (not self.alt_to_slew is None):
+            self.is_slewing = True
             self.tracker.slew(self.alt_to_slew, self.az_to_slew)
+            # Reset slew staging
+            self.is_slewing = False
+            self.alt_to_slew = None
+            self.az_to_slew = None
         else:
             print('CANNOT SLEW: Must set both\nalt_to_slew: {}\naz_to_slew: {}'.format(self.alt_to_slew, self.az_to_slew))
-        # Reset slew staging
-        self._slew = False
-        self.alt_to_slew(None)
-        self.az_to_slew(None)
 
     @property
     def alt_to_slew(self):
@@ -137,7 +141,6 @@ class SoCalDispatcher(object):
         Args:
             alt: (float) altitude in decimal degrees (0 = Horizon, 90 = Zenith)
         '''
-        assert (alt >= 0) and (alt <90), 'ALT: {} is out of range [0, 90)'.format(alt)
         self._alt_to_slew = alt
 
     @property
@@ -145,7 +148,7 @@ class SoCalDispatcher(object):
         return self._az_to_slew
     
     @az_to_slew.setter
-    def az_to_slewO(self, az):
+    def az_to_slew(self, az):
         '''
         Set the azimuth to move the tracker to.
         Will not slew until both `alt_to_slew` and `az_to_slew` 
@@ -154,7 +157,6 @@ class SoCalDispatcher(object):
         Args:
             az:  (float) azimuth in decimal degrees  (0 = South, 180 = North, +90 = East, -90 = West) TODO: verif E/W
         '''
-        assert (az >= -180) and (az <=180), 'AZ: {} is out of range (-180, 180)'.format(alt)
         self._az_to_slew = az
 
     @property
@@ -295,20 +297,20 @@ class SoCalDispatcher(object):
 
     ######################################## DOME ########################################
     @property
-    def domeopen(self):
-        return self._domeopen
+    def is_domeopen(self):
+        return self._is_domeopen
     
-    @domeopen.setter
-    def domeopen(self, val):
-        self._domeopen = val
+    @is_domeopen.setter
+    def is_domeopen(self, val):
+        self._is_domeopen = val
 
     @property
-    def domeclosed(self):
-        return self._domeclosed
+    def is_domeclosed(self):
+        return self._is_domeclosed
 
-    @domeclosed.setter
-    def domeclosed(self, val):
-        self._domeclosed = val
+    @is_domeclosed.setter
+    def is_domeclosed(self, val):
+        self._is_domeclosed = val
 
     @property
     def dome_in_motion(self):
@@ -318,26 +320,35 @@ class SoCalDispatcher(object):
     def dome_in_motion(self, val):
         self._dome_in_motion = val
 
-    def monitor_dome_in_motion(self):
+    def monitor_dome_in_motion(self, direction):
         ''''
         Monitor the state of the dome while the motor current is nonzero
         Only return when the dome is dome moving
 
         Returns: dome_status (dict)
         '''
+        # TODO: If received an error in get_dome_status need to throw an exception to halt the motion
         dome_status = self.get_dome_status()
-        while not (dome_status['Motor current'] == 0):
-            self.dome_in_motion(True)
-            print('Dome in motion...')
-            time.sleep(5)
-            if not (dome_status['Dome state'] == 'Unknown'):
-                print("Motor is running ({} A) but dome is {}! Stopping motor now...".format(dome_status['Motor current'], dome_status['Dome state']))
+        motor_status = dome_status['Motor']
+        time_in_waiting = 0
+        while motor_status['status'] == 'Stopped':
+            if time_in_waiting >= 10:
+                print('TIMEOUT -- Waited 10 seconds for dome to start moving.')
                 self.dome.stop()
-                print("Motor stopped.")
-            time.sleep(0.5)
+                return
+            time.sleep(1)
+            motor_status = self.get_dome_status()['Motor']
+            time_in_waiting += 1
+
+        assert motor_status['status'] == direction, 'Dome is {} but desired direction is {}'.format(motor_status['status'], direction)
+        while not (motor_status['status'] == 'Stopped'):
+            self.dome_in_motion = True
+            print('Dome in motion: {}...'.format(dome_status['Motor']['status']))
+            time.sleep(1)
             dome_status = self.get_dome_status()
+            motor_status = dome_status['Motor']
         print('Dome move complete.')
-        self.dome_in_motion(False)
+        self.dome_in_motion = False
         return dome_status
 
     def open_dome(self):
@@ -346,19 +357,30 @@ class SoCalDispatcher(object):
         '''
         
         print('Opening SoCal dome...')
+        if self.is_domeopen:
+            print('Dome is already open.')
+            return
+
         self.dome.open()
+ 
+        # Monitor the dome status as it opens
+        dome_status = self.monitor_dome_in_motion('Opening')
 
-        # Monitor dome status while it opens
-        dome_status = self.monitor_dome_in_motion()
-        self.domeopen(dome_status['Dome state'] == 'Open')
-        self.domeclosed(dome_status['Dome state'] == 'Closed')
-        assert dome_status['Motor current'] == 0, 'Motor is still running?'
-
-        # If it got stuck in undefined state (e.g. if it stops partway open due to obstruction) tell it to close immediatley
-        if dome_status['Dome state'] == 'Unknown':
+        # When that concludes, confirm the dome opened
+        self.is_domeopen   = (dome_status['Status'] == 'Open')
+        self.is_domeclosed = (dome_status['Status'] == 'Closed')
+        if self.is_domeopen and not self.is_domeclosed:
+            print('Dome opened successfully.')
+        elif  not self.is_domeopen and not self.is_domeclosed and (dome_status['Status'] == 'Unknown'):
+            # If it got stuck in undefined state (e.g. if it stops partway open due to obstruction) tell it to close immediatley
             print('Dome did not open completely, closing now. Check limit switches and verify area around dome is clear of obstructions.')
             self.dome.stop()
             self.close_dome()
+        else:
+            print("Error: booleans don't match desired dome position")
+            print('     Current state is {}.'.format(dome_status['Status']))
+            print('     is_domeopen={} and is_domeclosed={}.'.format(self.is_domeopen, self.is_domeclosed))
+            print("     Likely did not wait long enough before checking if dome started moving.")
 
     def close_dome(self):
         '''
@@ -366,53 +388,108 @@ class SoCalDispatcher(object):
         '''
         
         print('Closing SoCal dome...')
+        if self.is_domeclosed:
+            print('Dome is already closed.')
+            return
+
         self.dome.close()
 
-        # Monitor dome status while it opens
-        dome_status = self.monitor_dome_in_motion()
-        self.domeopen(dome_status['Dome state'] == 'Open')
-        self.domeclosed(dome_status['Dome state'] == 'Closed')
-        assert dome_status['Motor current'] == 0, 'Motor is still running?'
+        # Monitor the dome status as it closes
+        dome_status = self.monitor_dome_in_motion('Closing')
 
-        # If it got stuck in undefined state we have a problem
-        if dome_status['Dome state'] == 'Unknown':
+        # When that concludes, confirm the dome closed
+        self.is_domeopen   = (dome_status['Status'] == 'Open')
+        self.is_domeclosed = (dome_status['Status'] == 'Closed')
+
+        if self.is_domeclosed and not self.is_domeopen:
+            print('Dome closed successfully.')
+        elif  not self.is_domeopen and not self.is_domeclosed and (dome_status['Status'] == 'Unknown'):
+            # If it got stuck in undefined state (e.g. if it stops partway open due to obstruction) tell it to close immediatley
+            print('Dome did not close completely. Physical assistance may be needed on the roof. Trying again to close...')
             self.dome.stop()
-            print('Dome did not close completely. Physical assistance may be needed on the roof.')
+            self.close_dome()
+        else:
+            print("Error: booleans don't match desired dome position")
+            print('     Current state is {}.'.format(dome_status['Status']))
+            print('     is_domeopen={} and is_domeclosed={}.'.format(self.is_domeopen, self.is_domeclosed))
+            print("     Likely did not wait long enough before checking if dome started moving.")
 
-    def get_dome_status(self):
+
+    def get_dome_status(self, short=False):
         '''
         Get the current status of the various Dome sensors and parse
         '''
-        
-        status, response = self.dome.status()
-        if response == '0 OK':
-            # example status: "Closed,0,0,1,1,Stopped,0.0,Remote,Sensors:, Rain: off, Light: off, Power: on"
-            domeopen, leftopen, rightopen, leftclose, rightclose, motorrunning, motorcurrent, opmode, _, rain, light, power = status.split(',')
-            dome_status =  {'Dome state': domeopen, # ["Closed", "Unknown", "Open"]
-                           'Left open switch' : bool(leftopen),  'Right open switch' : bool(rightopen), 
-                           'Left close switch': bool(leftclose), 'Right close switch': bool(rightclose),
-                           'Motor state': motorrunning, 'Motor current': float(motorcurrent),
-                           'Operation mode': opmode, 
-                           'Rain sensor' : rain.split('Rain:')[-1].strip(), 
-                           'Light sensor': light.split('Light:')[-1].strip(), 
-                           'Power sensor': power.split('Power:')[-1].strip(),
-                          }
-        elif response in self.dome.possible_responses:
-            dome_status = status
+        result = self.dome.status(short=short)
+        if result[-1] == self.dome.possible_responses[0]:
+            status, response = result
+            # example short status: 
+            #     "Closed,0,0,1,1,Stopped,0.0,Remote,Sensors:, Power: on, Rain: off, Light: off"
+            # Sensors can be in a random order!!!!
+            if short:
+                is_domeopen, leftopen, rightopen, leftclose, rightclose, motorrunning, motorcurrent, opmode, _, s1, s2, s3 = status.split(',')
+                s1name, s1state = s1.split(':'); s2name, s2state = s2.split(':'); s3name, s3state = s3.split(':')
+                sensors = {s1name.strip(): s1state.strip(), s2name.strip(): s2state.strip(), s3name.strip(): s3state.strip()}
+                dome_status =  {'Status': is_domeopen, 'OP mode': opmode, 
+                                'Limits': {'open left' : bool(leftopen),  'open right' : bool(rightopen), 
+                                        'close left': bool(leftclose), 'close right': bool(rightclose)},
+                                'Motor': {'status': motorrunning, 
+                                        'current': float(motorcurrent)},
+                                'Temperatures': {},
+                                'Sensors': {'rain' : sensors['Rain'], 
+                                            'light': sensors['Light'], 
+                                            'power': sensors['Power']},
+                            }
+            else:            
+                # Format into key-value pairs for dome_status dictionary
+                s = status.replace('\n', ',')
+                s = s.replace('Limits:', '').replace('Temperatures:','').replace('Sensors:,', '')
+                s = s.replace('Guard', ',Guard').replace('Inside', ',Inside').replace('timeout', ',timeout')
+                ds = {key.strip(): val.strip() for key, val in (pair.split(':') for pair in s[:-1].split(','))}
+                # Reformat into appropriate datatypes
+                dome_status =  {'Status': ds['Status'], 'OP mode': ds['OP mode'], 
+                                'Limits': {key: {'ON': True, 'OFF': False}[ds[key]] 
+                                        for key in ['open left', 'open right', 'close left', 'close right']},
+                                'Motor': {'status': ds['Motor'], 
+                                        'current': float(ds['actual current'].replace(' A', '')),
+                                        'measured max': float(ds['measured max'].replace(' A', '')),
+                                        'last overcurrent': np.nan if ds['last overcurrent']=='N/A' 
+                                                                    else float(ds['last overcurrent'])},
+                                'Temperatures': {'inside': float(ds['Inside'])*(9/5) + 32,
+                                                'outside': float(ds['Outside'])*(9/5) + 32,
+                                                'ebox'   : float(ds['Guard electronics'])*(9/5) + 32},
+                                'Sensors': {'rain' : ds['Rain'], 
+                                            'light': ds['Light'], 
+                                            'power': ds['Power']},
+                                'Watchdog': {'status': ds['Watchdog'], 
+                                            'timeout' : ds['timeout']},
+                                'Last command': ds['Last command']
+                            }
+        elif len(result) == 1 and result[0] in self.dome.possible_responses:
+            response = result[0]
+            dome_status = None
             print('DOME ERROR:', response)
+        elif len(result) > 1 and result[-1] in self.dome.possible_responses:
+            dome_status = result[0]
+            response = result[-1]
+            print('DOME ERROR', response)
         else:
             dome_status = 'UNKNOWN'
-            print('UNKNOWN DOME ERROR:', response)
+            response = 'UNKNOWN'
+            print('UNKNOWN DOME ERROR - received: ', result)
         return dome_status
 
     #################################### CONNECTIVITY ####################################
     @property
     def tracker_online(self):
-        return self.tracker.socket.getpeername() # TODO: how to check this
+        try:
+            _ = self.tracker.get_datetime() # connecton test
+            self._tracker_online = True
+        except:
+            self._tracker_online = False
 
     @property
     def pyrheliometer_online(self):
-        return True # TODO: how to check this
+        return True # TODO: check if pymodbus have a connected attribute?
 
     @property
     def dome_online(self):

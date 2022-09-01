@@ -20,7 +20,8 @@ class SoCal(object):
     states = ['PoweredOff',   # Tracker stowed at 'home' & dome CLOSED, powered OFF 
               'Stowed',       # Tracker stowed at 'home' & dome CLOSED, powered ON 
               'OnSky',        # Dome OPEN and tracker is in active guiding mode 
-              'DomeInMotion', # Dome is opening or closing 
+              'Opening',      # Dome is opening
+              'Closing',      # Dome is closing
               'ERROR_STATE',  # Undefined/error state 
              ]
     # Valid transitions between predefined SoCal operational states
@@ -29,17 +30,17 @@ class SoCal(object):
             'source': 'PoweredOff', 'dest':'Stowed', 
             'prepare': 'can_power_on', 'before': 'power_on_system', 'after': 'did_power_on'},
         {'trigger': 'open', 
-            'source': 'Stowed', 'dest':'DomeInMotion',
+            'source': 'Stowed', 'dest':'Opening',
             'conditions': ['is_safe_to_open'], 
-            'prepare': 'can_open', 'before': 'open_dome', 'after': 'did_open'},
+            'before': 'can_open', 'after': 'did_open'},
         {'trigger': 'guide',
-            'source': 'DomeInMotion', 'dest': 'OnSky', 
+            'source': 'Opening', 'dest': 'OnSky', 
             'prepare': 'can_guide', 'before': 'start_guiding', 'after': 'are_guiding'},
         {'trigger': 'close',
-            'source': 'OnSky', 'dest': 'DomeInMotion', 
-            'prepare': 'can_close', 'before': 'close_dome', 'after': 'did_close'},
+            'source': 'OnSky', 'dest': 'Closing', 
+            'before': 'can_close', 'after': 'did_close'},
         {'trigger': 'stow',
-            'source': 'DomeInMotion', 'dest': 'Stowed', 
+            'source': 'Closing', 'dest': 'Stowed', 
             'prepare': 'can_stow', 'before': 'stow_tracker', 'after': 'did_stow'},
         {'trigger': 'power_off', 
             'source': 'Stowed', 'dest': 'PoweredOff', 
@@ -58,6 +59,10 @@ class SoCal(object):
             self.machine = Machine(model=self, states=SoCal.states,
                                 transitions=SoCal.transitions, initial='PoweredOff')
         
+        # Transition functions
+        self.machine.on_enter_Opening('open_dome')
+        self.machine.on_enter_Closing('close_dome')
+        
         # Connect to the dispatcher
         self.dispatcher = Dispatcher.connect()
         
@@ -70,14 +75,14 @@ class SoCal(object):
     @property
     def on_sun(self):
         """ Check that the tracker is pointed at the Sun """
+        # Should this move to Dispatcher.py?
         # TODO: open connection to and read from pyrheliometer (write to file) 
         # TODO: verify pyrheliometer flux is reasonable
         # TODO: check current alt/az vs. predicted & guiding offset
         return True 
 
     def check_on_sun(self):
-        # TODO: should this trigger anything else to happen (or not happen)?
-        if self.on_sun:
+        if self.dispatcher.is_on_sun:
             print('Guiding on Sun. Get yer photons here!')
         else:
             print("Guiding failed. If it's not cloudy, check the sun sensor alignment.")
@@ -106,10 +111,10 @@ class SoCal(object):
         # Postcondition check for transition `power_on`
         return True
 
-    ############################ open: Stowed --> DomeInMotion ############################
+    ############################ open: Stowed --> Opening ############################
     def can_open(self):
         # Precondition check for transition `open`
-        return True
+        return self.dispatcher.dome_online
 
     def open_dome(self):
         ''' set domeopen True '''
@@ -118,32 +123,34 @@ class SoCal(object):
     def did_open(self):
         # Postcondition check for transition `open`
         # If the dome opened successfully, do transition 'guide'
-        if self.dispatcher.domeopen():
+        if self.dispatcher.is_domeopen:
             self.guide()
         else:
             dome_status = self.dispatcher.get_dome_status()
             print('ERROR! The dome did not open. In fact, it is {}'.format(dome_status['Dome state']))
             self.errored()
 
-    ############################ guide: DomeInMotion --> OnSky ############################
+    ############################ guide: Opening --> OnSky ############################
     def can_guide(self):
         # Precondition check for transition `guide`
         # ping tracker
-        return True
+        return self.dispatcher.tracker_online
 
     def start_guiding(self):
-        ''' set guiding True '''
+        ''' set tracking_mode 3 '''
         print('Dome opened. Setting tracker to active guiding mode...')
-        self.dispatcher.start_guiding()
-
+        self.dispatcher.is_slewing = True
+        self.dispatcher.tracking_mode = '3'
+        self.dispatcher.is_slewing = False
+        
     def are_guiding(self):
         # Postcondition check for transition `guide`
-        self.check_on_sun()
+        self.check_on_sun() # TODO
 
-    ############################ close: OnSky --> DomeInMotion ############################
+    ############################ close: OnSky --> Closing ############################
     def can_close(self):
         # Precondition check for transition `close`
-        return True
+        return self.dispatcher.dome_online
 
     def close_dome(self):
         ''' set domeclosed True '''
@@ -151,30 +158,29 @@ class SoCal(object):
 
     def did_close(self):
         # Postcondition check for transition `close`
-        if self.dispatcher.domeclosed():
+        if self.dispatcher.is_domeclosed:
             self.stow()
         else:
             dome_status = self.dispatcher.get_dome_status()
-            print('ERROR! The dome did not close. In fact, it is {}'.format(dome_status['Dome state']))
+            print('ERROR! The dome did not close. In fact, it is {}'.format(dome_status['Status']))
             self.errored()    
                
-    ############################ close: DomeInMotion --> Stowed ############################
+    ############################ stow: Closing --> Stowed ############################
     def can_stow(self):
         # Precondition check for transition `stow`
-        # ping tracker
-        return True
+        return self.dispatcher.tracker_online
 
     def stow_tracker(self):
         # If the dome successfully closed, return the tracker to home
         print("Dome closed. Moving tracker to 'home'...")
-        self.dispatcher.alt_to_slew(self.dispatcher.tracker.HOME_ALT)
-        self.dispatcher.az_to_slew(self.dispatcher.tracker.HOME_AZ)
-        self.dispatcher.slew(True)
+        self.dispatcher.alt_to_slew = self.dispatcher.tracker.HOME_ALT
+        self.dispatcher.az_to_slew  = self.dispatcher.tracker.HOME_AZ
+        self.dispatcher.slew()
 
     def did_stow(self):
-        # Postcondition check for transition `close`
+        # Postcondition check for transition `stow`
         # confirm tracker pointing at home
-        return True
+        return self.dispatcher.current_alt == 0 and self.dispatcher.current_az == 0 and self.dispatcher.tracking_mode == '0'
 
     ############################ close: Stowed --> PoweredOff ############################
     def can_power_off(self):
