@@ -13,6 +13,7 @@
 import time
 import numpy as np
 from control import dome, sun_tracker
+from irradiance import pyrheliometer
 
 dispatcher = None
 
@@ -55,19 +56,22 @@ class SoCalDispatcher(object):
             self.tracker = sun_tracker.EKOSunTracker()
             self._tracker_online = True
         except:
-            print('Unable to connect to EKO Sun Tracker at {}/'.format(sun_tracker.TCP_IP, sun_tracker.TCP_PORT))
+            print('Unable to connect to Lantronix UDS2100 (EKO Sun Tracker) at {}/'.format(sun_tracker.TCP_IP, sun_tracker.TCP_PORT))
             self._tracker_online = False
+
+        # Try to open a connection to the pyrheliometer
+        try:
+            self.pyr = pyrheliometer.EKOPyrheliometer()
+            self.poll_pyr()
+            self._pyrheliometer_online = True
+        except:
+            print('Unable to connect to Lantronix UDS1100-IAP (EKO MS-57 Pyrheliometer) at {}/'.format(pyrheliometer.TCP_IP, pyrheliometer.TCP_PORT))
+            self._pyrheliometer_online = False
         
         # KTL keywords with hardcoded default values
         self._is_slewing  = False
         self._alt_to_slew = None
         self._az_to_slew  = None
-        self._solar_irrad        = 0
-        self._pyr_output_voltage = 0
-        self._pyr_heater_tem     = 0
-        self._pyr_sensitivity    = 0
-        self._clear_sky	         = 0    # solar_irrad > X*clear_sky_model - exact threshold TBD
-        self._pyrheliometer_online = False  # self.pyrheliometer has connection
 
     ############################### EKO Sun Tracker Keywords ##############################
     @property
@@ -255,45 +259,54 @@ class SoCalDispatcher(object):
 
 
     #################################### PYRHELIOMETER ####################################
-    @property
-    def solar_irrad(self):
-        return self._solar_irrad
 
-    @solar_irrad.setter
-    def solar_irrad(self, irrad):
-        self._solar_irrad = irrad
+    def poll_pyr(self):
+        '''
+        Poll the pyrheliometer and save the resulting values
+        '''
 
-    @property
-    def pyr_output_voltage(self):
-        return self._pyr_output_voltage
-
-    @pyr_output_voltage.setter
-    def pyr_output_voltage(self, voltage):
-        self._pyr_output_voltage = voltage
-
-    @property
-    def pyr_heater_temp(self):
-        return self._pyr_heater_temp
-
-    @pyr_heater_temp.setter
-    def pyr_heater_temp(self, temperature):
-        self._pyr_heater_temp = temperature
-
-    @property
-    def pyr_sensitivity(self):
-        return self._pyr_sensitivity
-
-    @pyr_sensitivity.setter
-    def pyr_heater_temp(self, sensitivity):
-        self._pyr_sensitivity = sensitivity
+        min_irrad, max_irrad, sensitivity, out_voltage, solar_irrad, temperature = self.pyr.poll()
+        self.irradiance  = solar_irrad
+        self.sensitivity = sensitivity
+        self.outputvolt  = out_voltage
+        self.heater_temp = temperature
 
     @property	
     def clear_sky(self):
-        return self._clear_sky	
+        # solar_irrad > X*clear_sky_model - exact threshold TBD 
+        return True
 
-    @clear_sky.setter
-    def clear_sky(self, is_sky_clear):
-        self._clear_sky = is_sky_clear
+    @property
+    def irradiance(self):
+        return self._irradiance
+
+    @irradiance.setter
+    def irradiance(self, irrad):
+        self._irradiance = irrad
+
+    @property
+    def outputvolt(self):
+        return self._outvoltage
+
+    @outputvolt.setter
+    def outputvolt(self, voltage):
+        self._outputvolt = voltage
+
+    @property
+    def heater_temp(self):
+        return self._heater_temp
+
+    @heater_temp.setter
+    def heater_temp(self, temperature):
+        self._heater_temp = temperature
+
+    @property
+    def sensitivity(self):
+        return self._sensitivity
+
+    @sensitivity.setter
+    def sensitivity(self, sens):
+        self._sensitivity = sens
 
     ######################################## DOME ########################################
     @property
@@ -341,10 +354,17 @@ class SoCalDispatcher(object):
             time_in_waiting += 1
 
         assert motor_status['status'] == direction, 'Dome is {} but desired direction is {}'.format(motor_status['status'], direction)
+        time_current_zero = 0
         while not (motor_status['status'] == 'Stopped'):
-            self.dome_in_motion = True
-            print('Dome in motion: {}...'.format(dome_status['Motor']['status']))
+            if motor_status['current'] != 0:
+                self.dome_in_motion = True
+            if time_current_zero > 5:
+                print('Dome is not moving!')
+                break
             time.sleep(1)
+            print('Dome move in progress: {}... motor current is {} A'.format(motor_status['status'], motor_status['current']))
+            if motor_status['current'] == 0:
+                time_current_zero += 1
             dome_status = self.get_dome_status()
             motor_status = dome_status['Motor']
         print('Dome move complete.')
@@ -361,8 +381,9 @@ class SoCalDispatcher(object):
             print('Dome is already open.')
             return
 
-        self.dome.open()
- 
+        response = self.dome.open()
+        assert len(response) == 1 and (response[0] == self.dome.possible_responses[0]), "CANNOT OPEN: {}".format(response)
+
         # Monitor the dome status as it opens
         dome_status = self.monitor_dome_in_motion('Opening')
 
@@ -392,8 +413,9 @@ class SoCalDispatcher(object):
             print('Dome is already closed.')
             return
 
-        self.dome.close()
-
+        status, response = self.dome.close()
+        assert len(response) == 1 and (response[0] == self.dome.possible_responses[0]), "CANNOT CLOSE: {}".format(response)
+ 
         # Monitor the dome status as it closes
         dome_status = self.monitor_dome_in_motion('Closing')
 
@@ -419,63 +441,58 @@ class SoCalDispatcher(object):
         '''
         Get the current status of the various Dome sensors and parse
         '''
-        result = self.dome.status(short=short)
-        if result[-1] == self.dome.possible_responses[0]:
-            status, response = result
-            # example short status: 
+        status, response = self.dome.status(short=short)
+        if short:
+            # Technically the "software readable" status, this only contains a portion of the keywords: 
+            # Example `status`:
             #     "Closed,0,0,1,1,Stopped,0.0,Remote,Sensors:, Power: on, Rain: off, Light: off"
-            # Sensors can be in a random order!!!!
-            if short:
-                is_domeopen, leftopen, rightopen, leftclose, rightclose, motorrunning, motorcurrent, opmode, _, s1, s2, s3 = status.split(',')
-                s1name, s1state = s1.split(':'); s2name, s2state = s2.split(':'); s3name, s3state = s3.split(':')
-                sensors = {s1name.strip(): s1state.strip(), s2name.strip(): s2state.strip(), s3name.strip(): s3state.strip()}
-                dome_status =  {'Status': is_domeopen, 'OP mode': opmode, 
-                                'Limits': {'open left' : bool(leftopen),  'open right' : bool(rightopen), 
-                                        'close left': bool(leftclose), 'close right': bool(rightclose)},
-                                'Motor': {'status': motorrunning, 
-                                        'current': float(motorcurrent)},
-                                'Temperatures': {},
-                                'Sensors': {'rain' : sensors['Rain'], 
-                                            'light': sensors['Light'], 
-                                            'power': sensors['Power']},
-                            }
-            else:            
-                # Format into key-value pairs for dome_status dictionary
-                s = status.replace('\n', ',')
-                s = s.replace('Limits:', '').replace('Temperatures:','').replace('Sensors:,', '')
-                s = s.replace('Guard', ',Guard').replace('Inside', ',Inside').replace('timeout', ',timeout')
-                ds = {key.strip(): val.strip() for key, val in (pair.split(':') for pair in s[:-1].split(','))}
-                # Reformat into appropriate datatypes
-                dome_status =  {'Status': ds['Status'], 'OP mode': ds['OP mode'], 
-                                'Limits': {key: {'ON': True, 'OFF': False}[ds[key]] 
-                                        for key in ['open left', 'open right', 'close left', 'close right']},
-                                'Motor': {'status': ds['Motor'], 
-                                        'current': float(ds['actual current'].replace(' A', '')),
-                                        'measured max': float(ds['measured max'].replace(' A', '')),
-                                        'last overcurrent': np.nan if ds['last overcurrent']=='N/A' 
-                                                                    else float(ds['last overcurrent'])},
-                                'Temperatures': {'inside': float(ds['Inside'])*(9/5) + 32,
-                                                'outside': float(ds['Outside'])*(9/5) + 32,
-                                                'ebox'   : float(ds['Guard electronics'])*(9/5) + 32},
-                                'Sensors': {'rain' : ds['Rain'], 
-                                            'light': ds['Light'], 
-                                            'power': ds['Power']},
-                                'Watchdog': {'status': ds['Watchdog'], 
-                                            'timeout' : ds['timeout']},
-                                'Last command': ds['Last command']
-                            }
-        elif len(result) == 1 and result[0] in self.dome.possible_responses:
-            response = result[0]
-            dome_status = None
-            print('DOME ERROR:', response)
-        elif len(result) > 1 and result[-1] in self.dome.possible_responses:
-            dome_status = result[0]
-            response = result[-1]
-            print('DOME ERROR', response)
-        else:
-            dome_status = 'UNKNOWN'
-            response = 'UNKNOWN'
-            print('UNKNOWN DOME ERROR - received: ', result)
+            # Also the sensors can be in a random order!!!!
+            is_domeopen, leftopen, rightopen, leftclose, rightclose, motorrunning, motorcurrent, opmode, _, s1, s2, s3 = status.split(',')
+            s1name, s1state = s1.split(':'); s2name, s2state = s2.split(':'); s3name, s3state = s3.split(':')
+            sensors = {s1name.strip(): s1state.strip(), s2name.strip(): s2state.strip(), s3name.strip(): s3state.strip()}
+            dome_status =  {'Status': is_domeopen, 'OP mode': opmode, 
+                            'Limits': {'open left' : bool(leftopen),  'open right' : bool(rightopen), 
+                                    'close left': bool(leftclose), 'close right': bool(rightclose)},
+                            'Motor': {'status': motorrunning, 
+                                    'current': float(motorcurrent)},
+                            'Temperatures': {},
+                            'Sensors': {'rain' : sensors['Rain'], 
+                                        'light': sensors['Light'], 
+                                        'power': sensors['Power']},
+                        }
+        else:            
+            # Technically the human-readable status, this actally contains all the keywords
+            # Format into key-value pairs for dome_status dictionary
+            # if 'Local' in status:
+            # s = status.replace('\n', ',')
+            # s = s.replace('Limits:', '').replace('Temperatures:','').replace('Sensors:,', '')
+            # s = s.replace('Guard', ',Guard').replace('Outside', ',Outside').replace('timeout', ',timeout')
+            # ds = {key.strip(): val.strip() for key, val in (pair.split(':') for pair in s[:-1].split(','))}
+            # # else:
+            s = status.replace('\n', ',')
+            s = s.replace('Limits:', '').replace('Temperatures:','').replace('Sensors:,', '')
+            # s = s.replace('Guard', ',Guard').replace('Inside', ',Inside').replace('timeout', ',timeout')
+            s = s.replace('Outside', ',Outside').replace('Inside', ',Inside').replace('timeout', ',timeout')
+            ds = {key.strip(): val.strip() for key, val in (pair.split(':') for pair in s[:-1].split(','))}
+            # Reformat into appropriate datatypes
+            dome_status =  {'Status': ds['Status'], 'OP mode': ds['OP mode'], 
+                            'Limits': {key: {'ON': True, 'OFF': False}[ds[key]] 
+                                    for key in ['open left', 'open right', 'close left', 'close right']},
+                            'Motor': {'status': ds['Motor'], 
+                                    'current': float(ds['actual current'].replace(' A', '')),
+                                    'measured max': float(ds['measured max'].replace(' A', '')),
+                                    'last overcurrent': np.nan if ds['last overcurrent']=='N/A' 
+                                                                else float(ds['last overcurrent'])},
+                            'Temperatures': {'inside': float(ds['Inside'])*(9/5) + 32,
+                                            'outside': float(ds['Outside'])*(9/5) + 32,
+                                            'ebox'   : float(ds['Guard electronics'])*(9/5) + 32},
+                            'Sensors': {'rain' : ds['Rain'], 
+                                        'light': ds['Light'], 
+                                        'power': ds['Power']},
+                            'Watchdog': {'status' : ds['Watchdog'], 
+                                        'timeout' : ds['timeout']},
+                            'Last command': ds['Last command']
+                        }
         return dome_status
 
     #################################### CONNECTIVITY ####################################

@@ -22,7 +22,7 @@ class SoCal(object):
               'OnSky',        # Dome OPEN and tracker is in active guiding mode 
               'Opening',      # Dome is opening
               'Closing',      # Dome is closing
-              'ERROR_STATE',  # Undefined/error state 
+            #   'ERROR_STATE',  # Undefined/error state 
              ]
     # Valid transitions between predefined SoCal operational states
     transitions = [
@@ -45,7 +45,7 @@ class SoCal(object):
         {'trigger': 'power_off', 
             'source': 'Stowed', 'dest': 'PoweredOff', 
             'prepare': 'can_power_off', 'before': 'power_down_system', 'after': 'did_power_off'},
-        {'trigger': 'errored', 'source': '*', 'dest': 'ERROR_STATE'},
+        # {'trigger': 'errored', 'source': '*', 'dest': 'ERROR_STATE'},
         ]
 
     def __init__(self, graph=False):
@@ -128,7 +128,7 @@ class SoCal(object):
         else:
             dome_status = self.dispatcher.get_dome_status()
             print('ERROR! The dome did not open. In fact, it is {}'.format(dome_status['Dome state']))
-            self.errored()
+            # self.errored()
 
     ############################ guide: Opening --> OnSky ############################
     def can_guide(self):
@@ -163,7 +163,7 @@ class SoCal(object):
         else:
             dome_status = self.dispatcher.get_dome_status()
             print('ERROR! The dome did not close. In fact, it is {}'.format(dome_status['Status']))
-            self.errored()    
+            # self.errored()    
                
     ############################ stow: Closing --> Stowed ############################
     def can_stow(self):

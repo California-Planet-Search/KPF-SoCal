@@ -72,7 +72,7 @@ class DougDimmadome(object):
             if verbose and result[-1] == self.possible_responses[0]:
                 print(result[0])
         else:
-            status, response = self.__execCommands("s")
+            result = self.__execCommands("s")
             if verbose and result[-1] == self.possible_responses[0]:
                 print(result[0])
         return result
