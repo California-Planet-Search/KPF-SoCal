@@ -10,6 +10,7 @@
 #
 ############################################################
 
+import re
 import time
 import numpy as np
 from control import dome, sun_tracker
@@ -398,10 +399,9 @@ class SoCalDispatcher(object):
             self.dome.stop()
             self.close_dome()
         else:
-            print("Error: booleans don't match desired dome position")
+            print("Error: Dome did not open. Look for `current sensor is ok` in dome.log")
             print('     Current state is {}.'.format(dome_status['Status']))
             print('     is_domeopen={} and is_domeclosed={}.'.format(self.is_domeopen, self.is_domeclosed))
-            print("     Likely did not wait long enough before checking if dome started moving.")
 
     def close_dome(self):
         '''
@@ -463,17 +463,31 @@ class SoCalDispatcher(object):
         else:            
             # Technically the human-readable status, this actally contains all the keywords
             # Format into key-value pairs for dome_status dictionary
-            # if 'Local' in status:
+            ds = {}
+            for stat in status.replace('Guard ', '').split('\n')[:-1]:
+                vals = re.split(':|, ', stat)
+            #     print(vals)
+                if len(vals) == 2:
+                    ds[vals[0].strip()] = vals[1].strip()
+                else:
+                    if vals[0] in ['Limits']:
+                        vals = vals[1:]
+                    elif vals[0] in ['Temperatures']:
+                        temps = []
+                        for val in vals[1:]:
+                            temps.extend(val.strip().split(' '))
+                        vals = temps
+                    elif vals[0] in ['Sensors']:
+                        vals = vals[2:]
+                    elif vals[0] in 'Watchdog':
+                        wd = ':'.join([v.strip() for v in vals]).replace(' sec','').replace(' ', ':')
+                        vals = wd.split(':')
+                    ds |=  {key.strip(): val.strip() for key, val in zip(vals[0::2], vals[1::2])}
             # s = status.replace('\n', ',')
             # s = s.replace('Limits:', '').replace('Temperatures:','').replace('Sensors:,', '')
-            # s = s.replace('Guard', ',Guard').replace('Outside', ',Outside').replace('timeout', ',timeout')
+            # # s = s.replace('Guard', ',Guard').replace('Inside', ',Inside').replace('timeout', ',timeout')
+            # s = s.replace('Outside', ',Outside').replace('Inside', ',Inside').replace('timeout', ',timeout')
             # ds = {key.strip(): val.strip() for key, val in (pair.split(':') for pair in s[:-1].split(','))}
-            # # else:
-            s = status.replace('\n', ',')
-            s = s.replace('Limits:', '').replace('Temperatures:','').replace('Sensors:,', '')
-            # s = s.replace('Guard', ',Guard').replace('Inside', ',Inside').replace('timeout', ',timeout')
-            s = s.replace('Outside', ',Outside').replace('Inside', ',Inside').replace('timeout', ',timeout')
-            ds = {key.strip(): val.strip() for key, val in (pair.split(':') for pair in s[:-1].split(','))}
             # Reformat into appropriate datatypes
             dome_status =  {'Status': ds['Status'], 'OP mode': ds['OP mode'], 
                             'Limits': {key: {'ON': True, 'OFF': False}[ds[key]] 
@@ -485,7 +499,7 @@ class SoCalDispatcher(object):
                                                                 else float(ds['last overcurrent'])},
                             'Temperatures': {'inside': float(ds['Inside'])*(9/5) + 32,
                                             'outside': float(ds['Outside'])*(9/5) + 32,
-                                            'ebox'   : float(ds['Guard electronics'])*(9/5) + 32},
+                                            'ebox'   : float(ds['electronics'])*(9/5) + 32},
                             'Sensors': {'rain' : ds['Rain'], 
                                         'light': ds['Light'], 
                                         'power': ds['Power']},
