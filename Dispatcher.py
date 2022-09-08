@@ -413,7 +413,7 @@ class SoCalDispatcher(object):
             print('Dome is already closed.')
             return
 
-        status, response = self.dome.close()
+        response = self.dome.close()
         assert len(response) == 1 and (response[0] == self.dome.possible_responses[0]), "CANNOT CLOSE: {}".format(response)
  
         # Monitor the dome status as it closes
