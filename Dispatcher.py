@@ -373,7 +373,6 @@ class SoCalDispatcher(object):
         dome_status = self.monitor_dome_in_motion('Opening')
 
         # When that concludes, confirm the dome opened
-        self.is_domeclosed = (dome_status['Status'] == 'Closed')
         if self.is_domeopen and not self.is_domeclosed:
             print('Dome opened successfully.')
         elif  not self.is_domeopen and not self.is_domeclosed and (dome_status['Status'] == 'Unknown'):
@@ -403,8 +402,6 @@ class SoCalDispatcher(object):
         dome_status = self.monitor_dome_in_motion('Closing')
 
         # When that concludes, confirm the dome closed
-        self.is_domeclosed = (dome_status['Status'] == 'Closed')
-
         if self.is_domeclosed and not self.is_domeopen:
             print('Dome closed successfully.')
         elif  not self.is_domeopen and not self.is_domeclosed and (dome_status['Status'] == 'Unknown'):
