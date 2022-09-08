@@ -42,10 +42,6 @@ class SoCalDispatcher(object):
         # Try to open a connection to the Dome
         try:
             self.dome = dome.DougDimmadome()
-            dome_status = self.get_dome_status()
-            self._is_domeopen    = (dome_status['Status'] == 'Open')
-            self._is_domeclosed  = (dome_status['Status'] == 'Closed')
-            self._dome_in_motion = not (dome_status['Motor']['current'] == 0)
             self._dome_online    = self.dome.ws.connected
         except Exception as e:
             print('Unable to connect to DomeGuard at {}/{}'.format(dome.DOME_IP, dome.DOME_PORT))
@@ -312,27 +308,18 @@ class SoCalDispatcher(object):
     ######################################## DOME ########################################
     @property
     def is_domeopen(self):
-        return self._is_domeopen
-    
-    @is_domeopen.setter
-    def is_domeopen(self, val):
-        self._is_domeopen = val
+        dome_status = self.get_dome_status()
+        return dome_status['Status'] == 'Open'
 
     @property
     def is_domeclosed(self):
-        return self._is_domeclosed
-
-    @is_domeclosed.setter
-    def is_domeclosed(self, val):
-        self._is_domeclosed = val
+        dome_status = self.get_dome_status()
+        return dome_status['Status'] == 'Closed'
 
     @property
-    def dome_in_motion(self):
-        return self._dome_in_motion
-
-    @dome_in_motion.setter
-    def dome_in_motion(self, val):
-        self._dome_in_motion = val
+    def is_dome_in_motion(self):
+        dome_status = self.get_dome_status()
+        return not (dome_status['Motor']['current'] == 0)
 
     def monitor_dome_in_motion(self, direction):
         ''''
@@ -357,8 +344,6 @@ class SoCalDispatcher(object):
         assert motor_status['status'] == direction, 'Dome is {} but desired direction is {}'.format(motor_status['status'], direction)
         time_current_zero = 0
         while not (motor_status['status'] == 'Stopped'):
-            if motor_status['current'] != 0:
-                self.dome_in_motion = True
             if time_current_zero > 5:
                 print('Dome is not moving!')
                 break
@@ -369,7 +354,6 @@ class SoCalDispatcher(object):
             dome_status = self.get_dome_status()
             motor_status = dome_status['Motor']
         print('Dome move complete.')
-        self.dome_in_motion = False
         return dome_status
 
     def open_dome(self):
@@ -389,7 +373,6 @@ class SoCalDispatcher(object):
         dome_status = self.monitor_dome_in_motion('Opening')
 
         # When that concludes, confirm the dome opened
-        self.is_domeopen   = (dome_status['Status'] == 'Open')
         self.is_domeclosed = (dome_status['Status'] == 'Closed')
         if self.is_domeopen and not self.is_domeclosed:
             print('Dome opened successfully.')
@@ -420,7 +403,6 @@ class SoCalDispatcher(object):
         dome_status = self.monitor_dome_in_motion('Closing')
 
         # When that concludes, confirm the dome closed
-        self.is_domeopen   = (dome_status['Status'] == 'Open')
         self.is_domeclosed = (dome_status['Status'] == 'Closed')
 
         if self.is_domeclosed and not self.is_domeopen:
