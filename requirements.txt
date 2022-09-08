@@ -1,3 +1,4 @@
 pymodbus
 websockets
+websocket-client
 transitions
