@@ -127,7 +127,7 @@ class SoCal(object):
             self.guide()
         else:
             dome_status = self.dispatcher.get_dome_status()
-            print('ERROR! The dome did not open. In fact, it is {}'.format(dome_status['Dome state']))
+            print('ERROR! The dome did not open. In fact, it is {}'.format(dome_status['Status']))
             # self.errored()
 
     ############################ guide: Opening --> OnSky ############################
