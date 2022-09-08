@@ -42,6 +42,13 @@ class EKOPyrheliometer(object):
         self.client.close()
         print('Closed connection to {} at Port {}'.format(TCP_IP, TCP_PORT))
 
+    def open_connection(self):
+        '''
+        Open the Modbus TCP client
+        '''
+        self.client.connect()
+        print('Opened connection to {} at Port {}'.format(TCP_IP, TCP_PORT))
+
     def poll(self):
         '''
         Poll values from the MS-57 pyrheliometer

@@ -33,6 +33,10 @@ class EKOSunTracker(object):
         self.socket.close()
         print('Closed connection to {} at Port {}'.format(TCP_IP, TCP_PORT))
 
+    def open_connection(self):
+        self.socket.connect((TCP_IP, TCP_PORT))
+        print('Opened connection to {} at Port {}'.format(TCP_IP, TCP_PORT))
+
     def set_datetime(self, date, time):
         '''
         Set date and time (UTC)
