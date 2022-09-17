@@ -76,18 +76,6 @@ class SoCalDispatcher(object):
         return self.tracking_mode == '3'
 
     @property
-    def is_on_sun(self):
-        time_in_waiting = 0
-        while self.is_slewing:
-            if time_in_waiting > 60:
-                print("Timeout waiting for slew to end")
-                return
-            # wait until done slewing
-            time.sleep(1)
-            time_in_waiting += 1
-        return not self.is_slewing and (self.tracking_mode == '3') # and irrad = nominal
-        
-    @property
     def tracking_mode(self):
         return self.tracker.get_tracking_mode()
 
