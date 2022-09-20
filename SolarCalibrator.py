@@ -40,41 +40,41 @@ class SoCal(object):
         # Open the dome, while the tracker is homed. Only open if conditions are safe
         {'trigger': 'open', 
             'source': 'Stowed', 'dest':'Opening',
-            'conditions': ['is_safe_to_open'], 
+            'conditions':['operate', 'is_safe_to_open'], 
             'before': 'can_open', 'after': 'done_opening'},
             # After opening, check dome status and make next transition accordingly
             {'trigger': 'done_opening', 
-                'source': 'Opening', 'dest':'Open', 'conditions': ['dome_is_open'], 'after': 'guide'},
+                'source': 'Opening', 'dest':'Open', 'conditions':['operate', 'dome_is_open'], 'after': 'guide'},
             {'trigger': 'done_opening', 
-                'source': 'Opening', 'dest':'ERROR', 'conditions': ['dome_not_open'], 'after': 'recover'},
+                'source': 'Opening', 'dest':'ERROR', 'conditions':['operate', 'dome_not_open'], 'after': 'recover'},
         # With the dome open, enable active guiding on the solar tracker 
         {'trigger': 'guide',
             'source': 'Open', 'dest': 'AcquiringSun', 
-            'conditions': ['is_safe_to_open'],
+            'conditions':['operate', 'is_safe_to_open'],
             'before': 'can_guide', 'after': 'done_acquiring'},
             # After acquiring, check guiding status and make next transition accordingly
             {'trigger': 'done_acquiring', 
-                'source': 'AcquiringSun', 'dest':'OnSky', 'conditions': ['tracker_is_guiding']},
+                'source': 'AcquiringSun', 'dest':'OnSky', 'conditions':['operate', 'tracker_is_guiding']},
             {'trigger': 'done_acquiring', 
-                'source': 'AcquiringSun', 'dest':'ERROR', 'conditions': ['tracker_not_guiding'], 'after': 'recover'},
+                'source': 'AcquiringSun', 'dest':'ERROR', 'conditions':['operate', 'tracker_not_guiding'], 'after': 'recover'},
         # OnSky guiding loop: during normal operations, this routinely checks weather status and sun altitude
         {'trigger': 'monitor_onsky', 
-            'source': 'OnSky', 'dest':'OnSky', 'conditions': ['keep_observing'], 'after': 'wait'},
+            'source': 'OnSky', 'dest':'OnSky', 'conditions':['operate', 'keep_observing'], 'after': 'wait'},
         {'trigger': 'monitor_onsky', 
-            'source': 'OnSky', 'dest':'Closing', 'conditions': ['stop_observing'], 'before': 'can_close', 'after': 'done_closing'},
+            'source': 'OnSky', 'dest':'Closing', 'conditions':['operate', 'stop_observing'], 'before': 'can_close', 'after': 'done_closing'},
             # After closing, check dome status and make next transition accordingly
             {'trigger': 'done_closing', 
-                'source': 'Closing', 'dest':'Closed', 'conditions': ['dome_is_closed'], 'after': 'stow'},
+                'source': 'Closing', 'dest':'Closed', 'conditions':['operate', 'dome_is_closed'], 'after': 'stow'},
             {'trigger': 'done_closing', 
-                'source': 'Closing', 'dest':'ERROR', 'conditions': ['dome_not_closed'], 'after': 'recover'},
+                'source': 'Closing', 'dest':'ERROR', 'conditions':['operate', 'dome_not_closed'], 'after': 'recover'},
         # With the dome closed, home the tracker
         {'trigger': 'stow',
             'source': 'Closed', 'dest': 'StowingTracker', 'before': 'can_stow', 'after': 'done_stowing'},
             # After stowing, check tracker status and make next transition accordingly
             {'trigger': 'done_stowing', 
-                'source': 'StowingTracker', 'dest':'Stowed', 'conditions': ['tracker_is_home']},
+                'source': 'StowingTracker', 'dest':'Stowed', 'conditions':['operate', 'tracker_is_home']},
             {'trigger': 'done_stowing', 
-                'source': 'StowingTracker', 'dest':'ERROR', 'conditions': ['tracker_not_home'], 'after': 'recover'},
+                'source': 'StowingTracker', 'dest':'ERROR', 'conditions':['operate', 'tracker_not_home'], 'after': 'recover'},
         # Power-down the SoCal system
         {'trigger': 'power_off', 
             'source': 'Stowed', 'dest': 'PoweredOff', 
@@ -115,6 +115,12 @@ class SoCal(object):
         self.machine.on_enter_RECOVERING('try_recover')
 
     ################################# CONDITION DEFINITIONS #################################
+    @property
+    def operate(self):
+        """ If True, SoCal runs in autonomous mode. if False, prevents state transitions from occuring. """
+        # return self.socal['OPERATE'].read()
+        return True
+
     @property
     def is_safe_to_open(self):
         """ Verify conditions are safe to open """
@@ -230,6 +236,10 @@ class SoCal(object):
         ''' set tracking_mode 3 '''
         print('Setting tracker to active guiding mode...')
         self.socal['EKOCMD'].write('guide') # self.socal['EKOMODE'].write('3')
+
+    def wait(self):
+        ''' wait a few seconds so we don't have a super-fast internal loop '''
+        time.sleep(5)
         
     ############################ close: OnSky --> Closing ############################
     def can_close(self):
