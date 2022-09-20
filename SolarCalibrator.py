@@ -292,13 +292,13 @@ class SoCal(object):
 
     def try_recover(self):
         ''' Figure out what state SoCal was in when it went offline, and try to re-establish that state '''
-        if self.socal['ENCSTAT'].read() == 'Open' and self.socal['EKOMODE'] == '3':
+        if self.socal['ENCSTATUS'].read() == 'Open' and self.socal['EKOMODE'] == '3':
             # force transition to OnSky
             self.to_OnSky()
-        elif self.socal['ENCSTAT'].read() == 'Open' and self.socal['EKOHOME'].read():
+        elif self.socal['ENCSTATUS'].read() == 'Open' and self.socal['EKOHOME'].read():
             # force transition to Open
             self.to_Open()
-        elif self.socal['ENCSTAT'].read() == 'Closed' and not self.socal['EKOHOME'].read():
+        elif self.socal['ENCSTATUS'].read() == 'Closed' and not self.socal['EKOHOME'].read():
             # force transition to Closed
             self.to_Closed()
         else:
